@@ -114,7 +114,7 @@ sym_htab_lookup(const char *name)
 static void
 dg_begin(const char *filename)
 {
-	dg_info.output_name = filename;
+	dg_info.output_name = strdup(filename);
 }
 static void
 dg_print_obj(FILE *f, const struct objfile *o, int subgraph)
@@ -195,7 +195,7 @@ dg_object_start(const char *filename, int num_sections)
 {
 	struct objfile *o = malloc(sizeof *o);
 	o->next = dg_info.obj_list;
-	o->name = filename;
+	o->name = strdup(filename);
 	o->sections = calloc(num_sections, sizeof *o->sections);
 	o->num_sections = num_sections;
 	dg_info.obj_list = o;
@@ -246,6 +246,12 @@ dg_object_end()
 {
 }
 
+static void *
+memdup(const void *p, size_t l)
+{
+	void *r = malloc(l);
+	return r ? memcpy(r, p, l) : r;
+}
 static int
 sym_vis(int elfvis)
 {
@@ -286,6 +292,7 @@ process_elf(const char *filename, const unsigned char *view)
 	if (shstrndx == SHN_XINDEX)
 		shstrndx = shdrs[0].sh_link;
 	const char *shstrtab = (void *)(view + shdrs[shstrndx].sh_offset);
+	shstrtab = memdup(shstrtab, shdrs[shstrndx].sh_size);
 	size_t symsz = 0;
 	int symtabidx = 0, relidx = 0;
 	for (int i = 1; i < shnum; i++) {
@@ -329,6 +336,7 @@ process_elf(const char *filename, const unsigned char *view)
 		Shdr *strtab = shdrs + shdr->sh_link;
 		Sym *esyms = (void *)(view + shdr->sh_offset);
 		const char *strings = (void *)(view + strtab->sh_offset);
+		strings = memdup(strings, strtab->sh_size);
 		unsigned *shndxs = (shndx == shdrs ? 0
 				    : (void *)(view + shndx->sh_offset));
 		size_t nsyms = shdr->sh_size / sizeof(Sym);
