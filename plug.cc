@@ -159,19 +159,21 @@ process_calls (struct cgraph_node *node)
 
   for (cs = node->callees; cs; cs = cs->next_callee)
     for (i = 0; i < signatures.length (); ++i)
-      if (!strcmp (signatures[i].func_name, cs->callee->name ()))
+      if (!strcmp (signatures[i].func_name, cs->callee->asm_name ()))
 	{
 	  if (dump_file)
 	    fprintf (dump_file, "\t%s matched to the signature\n", 
-		     cs->callee->name ());
+		     cs->callee->asm_name ());
 
 	  tree symbol = gimple_call_arg (cs->call_stmt, signatures[i].sym_pos);
 	  is_limited = parse_symbol (node, symbol, &signatures[i]); 
 
 	  if (dump_file && !is_limited) 
 	    fprintf (dump_file, "\t%s set is not limited\n", 
-		     cs->callee->name ());
+		     cs->callee->asm_name ());
 	}
+  if (dump_file)
+    fprintf (dump_file, "\n");
 }
 
 static unsigned int 
@@ -202,6 +204,9 @@ resolve_dlsym_calls (void)
 	delete (*it).second;
       dynamic_symbols.empty ();
     }
+
+  if (dump_file)
+    fprintf (dump_file, "Dynamic symbol resolving pass ended\n\n");
   return 0;
 }
 
@@ -259,14 +264,17 @@ void
 dump_dynamic_symbol_calls (function* func, call_symbols *symbols)
 {
   if (!symbols->elements ())
-    return;
+    {
+      fprintf(dump_file, "\n\n");
+      return;
+    }
 
   fprintf (dump_file, "Function->callee->[symbols]:\n");
   for (auto it = symbols->begin (); 
        it != symbols->end ();
        ++it)
     {
-      fprintf(dump_file, "%s->%s->[", function_name(func),
+      fprintf(dump_file, "\t%s->%s->[", function_name(func),
 	      (*it).first);
       for (auto it2 = (*it).second->begin (); 
 	   it2 != (*it).second->end ();
@@ -278,7 +286,7 @@ dump_dynamic_symbol_calls (function* func, call_symbols *symbols)
 	}
       fprintf(dump_file, "]\n");
     }
-  fprintf(dump_file, "\n");
+  fprintf(dump_file, "\n\n");
 }
 
 void 
