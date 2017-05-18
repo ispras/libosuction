@@ -25,9 +25,17 @@ static struct {
 			struct objfile *object;
 			const char *name;
 		        size_t size;
-			struct rel {
+			struct sym {
 				const char *name;
-				int symscn;
+				struct section *section;
+				struct rel *firstrel;
+				enum {W_STRONG, W_COMMON, W_WEAK, W_UNDEF} weak;
+				enum {V_DEFAULT, V_PROTECTED, V_HIDDEN} vis;
+			} anchorsym;
+			struct rel {
+				struct section *section;
+				struct sym *sym;
+				struct rel *nextrel;
 			} *rels;
 			size_t nrels;
 			struct sym **symptrs;
@@ -38,12 +46,7 @@ static struct {
 			int graphid;
 		} *sections;
 		int num_sections;
-		struct sym {
-			const char *name;
-			struct section *section;
-			enum {W_STRONG, W_COMMON, W_WEAK, W_UNDEF} weak;
-			enum {V_DEFAULT, V_PROTECTED, V_HIDDEN} vis;
-		} *syms;
+		struct sym *syms;
 		int nsyms;
 	} *obj_list;
 } dg_info;
@@ -113,14 +116,6 @@ dg_begin(const char *filename)
 {
 	dg_info.output_name = filename;
 }
-static int
-rels_cmp(const void *va, const void *vb)
-{
-	const struct rel *a = va, *b = vb;
-	if (a->symscn - b->symscn != 0)
-		return a->symscn - b->symscn;
-	return strcmp(a->name ? a->name : "", b->name ? b->name : "");
-}
 static void
 dg_print_obj(FILE *f, const struct objfile *o, int subgraph)
 {
@@ -132,31 +127,35 @@ dg_print_obj(FILE *f, const struct objfile *o, int subgraph)
 	fprintf(f, "label=\"%s\";\n", o->name);
 	struct section *s;
 	for (s = o->sections; s < o->sections + o->num_sections; s++) {
-		if (!s->used) continue;
+		if (!s->name) continue;
 		int id = s->graphid = sectionid++;
+		if (!s->used) continue;
 		fprintf(f, "\tsubgraph cluster_s_%d { ", id);
 		fprintf(f, "label=\"%s: size %zd\";\n", s->name, s->size);
 		fprintf(f, "\t\tsection_%d[shape=plain,label=\".\"];\n", id);
 		fprintf(f, "\t}\n");
 	}
+	fprintf(f, "}\n");
+}
+static void
+dg_print_rels(FILE *f, const struct objfile *o)
+{
+	struct section *s;
 	for (s = o->sections; s < o->sections + o->num_sections; s++) {
 		if (!s->used) continue;
-		qsort(s->rels, s->nrels, sizeof *s->rels, rels_cmp);
-		int sid = s->graphid, rid, prevrid = 0;
+		int sid = s->graphid;
 		for (struct rel *r = s->rels; r < s->rels + s->nrels; r++) {
-			rid = o->sections[r->symscn].graphid;
-			if (!r->symscn || rid == prevrid) continue;
-			prevrid = rid;
+			if (!r->sym || !r->sym->section) continue;
+			int rid = r->sym->section->graphid;
 			fprintf(f, "\tsection_%d->section_%d[", sid, rid);
-			if (r->symscn != s-o->sections)
+			if (sid != rid)
 				fprintf(f, "ltail=cluster_s_%d,lhead=cluster_s_%d,",
 					sid, rid);
-			if (r->name)
-				fprintf(f, "tooltip=\"%s\"", r->name);
+			if (r->sym->name)
+				fprintf(f, "tooltip=\"%s\"", r->sym->name);
 			fprintf(f, "];\n");
 		}
 	}
-	fprintf(f, "}\n");
 }
 static void
 dg_print_all(FILE *f)
@@ -165,11 +164,30 @@ dg_print_all(FILE *f)
 	fprintf(f, "label=\"%s\";\n", dg_info.output_name);
 	for (struct objfile *o = dg_info.obj_list; o; o = o->next)
 		dg_print_obj(f, o, 1);
+	for (struct objfile *o = dg_info.obj_list; o; o = o->next)
+		dg_print_rels(f, o);
 	fprintf(f, "}\n");
+}
+static void
+dg_mark_used(struct section *s)
+{
+	s->used = 2;
+	for (struct rel *r = s->rels; r < s->rels + s->nrels; r++)
+		if (r->sym && r->sym->section && r->sym->section->used != 2)
+			dg_mark_used(r->sym->section);
 }
 static void
 dg_end(void)
 {
+	for (struct objfile *o = dg_info.obj_list; o; o = o->next)
+		for (struct sym *s = o->syms; s < o->syms + o->nsyms; s++)
+			if (s->name && s->section && s->vis != V_HIDDEN)
+				s->section->used = 1;
+	for (struct objfile *o = dg_info.obj_list; o; o = o->next)
+		for (struct section *s = o->sections;
+		     s < o->sections + o->num_sections; s++)
+			if (s->used == 1)
+				dg_mark_used(s);
 	dg_print_all(stdout);
 }
 static void
@@ -193,6 +211,7 @@ dg_section_init(struct section *s, const char *name, size_t size, int used)
 	s->object = dg_info.obj_list;
 	s->name = name;
 	s->size = size;
+	s->anchorsym.section = s;
 	static const char keep[] = "tors\0tors\0     ini\0           nit";
 	unsigned o = name[1] - (unsigned)'c';
 	if (!used && size && *name=='.' && o<7 && !strcmp(name+2, keep + o*5))
@@ -212,18 +231,15 @@ dg_rels_alloc(struct section *s, size_t nrels)
 	s->nrels = nrels;
 	return s->rels = calloc(nrels, sizeof *s->rels);
 }
-static struct rel *
-dg_rel(int n, struct section *s)
-{
-	return s->rels + n;
-}
 static void
-dg_rel_init(struct rel *r, struct section *s, int symscn, const char *name)
+dg_rel_init(struct rel *r, struct section *scn, struct sym *sym)
 {
-	if (!symscn || symscn==SHN_COMMON) return;
-	r->name = name;
-	r->symscn = symscn;
-	s->used = dg_section(symscn)->used = 1;
+	if (sym->firstrel && sym->firstrel->section == scn)
+		return;
+	r->section = scn;
+	r->sym = sym;
+	r->nextrel = sym->firstrel;
+	sym->firstrel = r;
 }
 static void
 dg_object_end()
@@ -250,7 +266,6 @@ process_elf(const char *filename, const unsigned char *view)
 	typedef ElfNN_(Shdr) Shdr;
 	typedef ElfNN_(Sym) Sym;
 	typedef ElfNN_(Rel) Rel;
-	typedef ElfNN_(Rela) Rela;
 	if (memcmp (ehdr->e_ident, ELFMAG, SELFMAG))
 		return 0;
 	if (ehdr->e_ident[4] != ELFCLASS)
@@ -323,8 +338,10 @@ process_elf(const char *filename, const unsigned char *view)
 		for (size_t j = 0; j < nsyms; j++) {
 			Sym *sym = esyms + j;
 			int bind = ELF_ST_BIND(sym->st_info);
-			if (bind == STB_LOCAL)
+			if (bind == STB_LOCAL) {
+				symptrs[j] = &dg_section(sym->st_shndx)->anchorsym;
 				continue;
+			}
 			if (!sym->st_name)
 				return "unnamed non-local symbol";
 			struct sym ssym;
@@ -336,7 +353,7 @@ process_elf(const char *filename, const unsigned char *view)
 				else
 					return "missing symtab_shndx";
 			ssym.weak = sym_weak(bind, shndx);
-			if (shndx == SHN_COMMON) shndx = 0;
+			if (shndx == SHN_COMMON || shndx == SHN_ABS) shndx = 0;
 			ssym.section = shndx ? dg_section(shndx) : 0;
 			ssym.vis = sym_vis(ELF_ST_VISIBILITY(sym->st_other));
 
@@ -354,79 +371,22 @@ process_elf(const char *filename, const unsigned char *view)
 	}
 	for (int i = relidx; i; i = dg_section(i)->next) {
 		Shdr *shdr = shdrs + i;
-		Shdr *symtab = shdrs + shdr->sh_link;
-		Shdr *symtab_shndx = shdrs + dg_section(shdr->sh_link)->shndx;
-		Shdr *strtab = shdrs + symtab->sh_link;
-		Sym *syms = (void *)(view + symtab->sh_offset);
-		const char *strings = (void *)(view + strtab->sh_offset), *name;
-		unsigned *shndxs = (symtab_shndx == shdrs ? 0
-				    : (void *)(view + symtab_shndx->sh_offset));
 		struct section *relscn = dg_section(shdr->sh_info);
 		if (!relscn->name)
-			return "initcheck";
+			return "relocations applied to unexpected section";
+		struct section *symtabscn = dg_section(shdr->sh_link);
+		if (!symtabscn->symptrs)
+			return "symtab not populated";
 		ssize_t nrels = shdr->sh_size / shdr->sh_entsize;
 		struct rel *r = dg_rels_alloc(relscn, nrels);
 		for (ssize_t j=0, o=0; j < nrels; j++, r++, o+=shdr->sh_entsize) {
 			Rel *rel = (void *)(view + shdr->sh_offset + o);
-			Sym *sym = syms + ELF_R_SYM(rel->r_info);
-			name = sym->st_name ? strings + sym->st_name : 0;
-			int shndx = sym->st_shndx;
-			if (shndx == SHN_XINDEX)
-				if (shndxs)
-					shndx = shndxs[ELF_R_SYM(rel->r_info)];
-				else
-					return "missing symtab_shndx";
-			int bind = ELF_ST_BIND(sym->st_info);
-			int vis = ELF_ST_VISIBILITY(sym->st_other);
-			dg_rel_init(r, relscn, shndx, name);
+			struct sym *sym = symtabscn->symptrs[ELF_R_SYM(rel->r_info)];
+			dg_rel_init(r, relscn, sym);
 		}
 	}
 	for (int i = symtabidx; i; i = dg_section(i)->next)
 		free(dg_section(i)->symptrs);
-	for (int i = shnum - 1; i > 0; i--) {
-		Shdr *shdr = shdrs + i;
-		ElfNN_(Sym) *syms, *sym;
-		const char *strtab;
-		const char *refsec;
-		switch (shdr->sh_type) {
-		case SHT_SYMTAB:
-			sym = syms = (void *)(view + shdr->sh_offset);
-			strtab = (void *)(view + shdrs[shdr->sh_link].sh_offset);
-			for (uint64_t o = 0; o < shdr->sh_size; sym++, o += sizeof *sym) {
-				int bind = ELF_ST_BIND (sym->st_info);
-				int vis = ELF_ST_VISIBILITY (sym->st_other);
-				if (!sym->st_name
-				    || !sym->st_shndx
-				    || sym->st_shndx >= SHN_LORESERVE
-				    || 0 && bind == STB_LOCAL
-				    || 0 && bind == STB_WEAK
-				    || 0 && vis == STV_INTERNAL
-				    || 0 && vis == STV_HIDDEN)
-					continue;
-			}
-			break;
-		case SHT_RELA:
-			syms = (void *)(view + shdrs[shdr->sh_link].sh_offset);
-			strtab = (void *)(view + shdrs[shdrs[shdr->sh_link].sh_link].sh_offset);
-			refsec = shstrtab + shdrs[shdr->sh_info].sh_name;
-			if (shdr->sh_entsize != sizeof (ElfNN_(Rela)))
-				return "Rela size mismatch";
-			for (uint64_t o = 0; o < shdr->sh_size; o += shdr->sh_entsize) {
-				ElfNN_(Rela) *rela = (void*)(view + shdr->sh_offset + o);
-				sym = syms + ELF_R_SYM (rela->r_info);
-				int bind = ELF_ST_BIND (sym->st_info);
-				int vis = ELF_ST_VISIBILITY (sym->st_other);
-				if (!sym->st_name
-				    || 0 && bind == STB_LOCAL
-				    || 0 && vis == STV_INTERNAL
-				    || 0 && vis == STV_HIDDEN)
-					continue;
-			}
-			break;
-		case SHT_REL:
-			break;
-		}
-	}
 	return 0;
 }
 
