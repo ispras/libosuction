@@ -35,14 +35,26 @@ public:
 
 }; // class pass_drop_globally_unused
 
+static bool
+unused_p (cgraph_node *node)
+{
+  return !strcmp (node->name (), "foo");
+}
+
 unsigned int
 pass_drop_globally_unused::execute (function *)
 {
   cgraph_node *node;
+  cgraph_node *next;
 
-  FOR_EACH_FUNCTION (node)
+  for (node = symtab->first_function (); node; node = next)
     {
-      printf ("%s\n", node->name());
+      next = symtab->next_function (node);
+
+      if (unused_p (node))
+	node->remove ();
+      else
+	printf ("%s\n", node->name ());
     }
   return 0;
 }
