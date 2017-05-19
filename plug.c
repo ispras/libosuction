@@ -18,6 +18,7 @@ _Static_assert(LD_PLUGIN_API_VERSION == 1, "unexpected plugin API version");
 
 static struct {
 	const char *output_name;
+	int is_dso;
 	struct objfile {
 		struct objfile *next;
 		const char *name;
@@ -58,7 +59,7 @@ static struct symsht {
 	size_t used;
 } syms_htab;
 
-static unsigned
+static inline unsigned
 sym_hash(const char *name)
 {
 	const unsigned char *c = (const void *)name;
@@ -110,11 +111,27 @@ sym_htab_lookup(const char *name)
 			return syms_htab.syms + i;
 	}
 }
+static struct sym *
+sym_htab_lookup_only(const char *name)
+{
+	if (!syms_htab.used)
+		return 0;
+	unsigned hash = sym_hash(name);
+	for (size_t i = hash; ; i++) {
+		i &= syms_htab.size - 1;
+		if (!syms_htab.syms[i])
+			return 0;
+		if (syms_htab.hashes[i] == hash
+		    && !strcmp(name, syms_htab.syms[i]->name))
+			return syms_htab.syms[i];
+	}
+}
 
 static void
-dg_begin(const char *filename)
+dg_begin(const char *filename, int is_dso)
 {
 	dg_info.output_name = strdup(filename);
+	dg_info.is_dso = is_dso;
 }
 static void
 dg_print_obj(FILE *f, const struct objfile *o, int subgraph)
@@ -123,7 +140,7 @@ dg_print_obj(FILE *f, const struct objfile *o, int subgraph)
 	if (subgraph)
 		fprintf(f, "subgraph cluster_o_%d { ", clusterid++);
 	else
-		fprintf(f, "digraph { ");
+		fprintf(f, "digraph \"\" { ");
 	fprintf(f, "label=\"%s\";\n", o->name);
 	struct section *s;
 	for (s = o->sections; s < o->sections + o->num_sections; s++) {
@@ -160,7 +177,7 @@ dg_print_rels(FILE *f, const struct objfile *o)
 static void
 dg_print_all(FILE *f)
 {
-	fprintf(f, "digraph { ");
+	fprintf(f, "digraph \"\" { ");
 	fprintf(f, "label=\"%s\";\n", dg_info.output_name);
 	for (struct objfile *o = dg_info.obj_list; o; o = o->next)
 		dg_print_obj(f, o, 1);
@@ -179,10 +196,14 @@ dg_mark_used(struct section *s)
 static void
 dg_end(void)
 {
-	for (struct objfile *o = dg_info.obj_list; o; o = o->next)
-		for (struct sym *s = o->syms; s < o->syms + o->nsyms; s++)
-			if (s->name && s->section && s->vis != V_HIDDEN)
-				s->section->used = 1;
+	struct sym *s = sym_htab_lookup_only("_start");
+	if (s && s->section)
+		s->section->used = 1;
+	if (dg_info.is_dso)
+		for (struct objfile *o = dg_info.obj_list; o; o = o->next)
+			for (s = o->syms; s < o->syms + o->nsyms; s++)
+				if (s->name && s->section && s->vis != V_HIDDEN)
+					s->section->used = 1;
 	for (struct objfile *o = dg_info.obj_list; o; o = o->next)
 		for (struct section *s = o->sections;
 		     s < o->sections + o->num_sections; s++)
@@ -454,7 +475,10 @@ onload(struct ld_plugin_tv *tv)
 	    (claim_file_handler);
 	u[LDPT_REGISTER_ALL_SYMBOLS_READ_HOOK].tv_register_all_symbols_read
 	    (all_symbols_read_handler);
-	dg_begin(u[LDPT_OUTPUT_NAME].tv_string);
+
+	int output = u[LDPT_LINKER_OUTPUT].tv_val;
+	if (output != LDPO_REL)
+		dg_begin(u[LDPT_OUTPUT_NAME].tv_string, output == LDPO_DYN);
 	return 0;
 }
 _Static_assert(sizeof((ld_plugin_onload){onload}) != 0, "");
