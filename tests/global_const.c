@@ -1,15 +1,13 @@
 #include <dlfcn.h>
-char * const func_name = "foo";
 
-__attribute__((noinline)) void *function_caller(char *lib_name)
-{
-  void * library_handle = dlopen(lib_name, RTLD_NOW); 
-  return dlsym(library_handle, func_name);
-}
+const char * func_name = "bar";
 
 int main()
 {
-  void (* my_dyn_func)(int) = (void (*)(int))function_caller("./testlib.so");
+  void * library_handle;
+  void (* my_dyn_func)(int);
+  func_name = "foo";
+  library_handle = dlopen("./testlib.so", RTLD_NOW); 
+  my_dyn_func = (void (*)(int))dlsym(library_handle, func_name);
   my_dyn_func(2);
 }
-

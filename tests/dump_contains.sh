@@ -64,8 +64,7 @@ echo $(simple_test cycle_cgraph2.c "dlsym set is not limited" 0 "Limited" )
 echo $(simple_test cycle_cgraph2.c "function_caller->dlsym->\[bar\]" 1 "Symbol Set" )
 # TODO func_macro
 echo $(simple_test global_const.c "dlsym matched to the signature" 1 "Signature"  )
-echo $(simple_test global_const.c "dlsym set is not limited" 0 "Limited" )
-echo $(simple_test global_const.c "function_caller->dlsym->\[foo\]" 1 "Symbol Set" )
+echo $(simple_test global_const.c "dlsym set is not limited" 1 "Limited" )
 # TODO Skipped global_handler.c
 echo $(simple_test local_array.c "dlsym matched to the signature" 1 "Signature"  )
 echo $(simple_test local_array.c "dlsym set is not limited" 0 "Limited" )

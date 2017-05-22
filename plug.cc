@@ -124,10 +124,18 @@ parse_symbol (struct cgraph_node *node, tree symbol, struct signature *sign)
       switch (gimple_code (def_stmt))
 	{
 	case GIMPLE_ASSIGN:
-	  return false;
+//	  if (gimple_assign_single_p (def_stmt) 
+//	      || gimple_assign_unary_nop_p (def_stmt))
+//	    {
+//	      tree arg = gimple_assign_rhs1 (def_stmt);
+//	      result &= parse_symbol (node, arg, sign);
+//	    }
+//	  else
+	    result = false;
+	  break;
 
 	case GIMPLE_PHI:
-	  /*TODO phi cycles, currently anavalable because of absence of 
+	  /*TODO phi cycles, currently unavalable because of absence of 
 	    string changing track */
 	  if (dump_file)
 	    fprintf (dump_file, "\tPHI statement def: iterate each of them\n");
@@ -136,13 +144,14 @@ parse_symbol (struct cgraph_node *node, tree symbol, struct signature *sign)
 	      tree arg = gimple_phi_arg_def (def_stmt, i);
 	      result &= parse_symbol (node, arg, sign);
 	    }
-	  return result;
+	  break;
 
 	default:
-	  return false;
+	  result = false;
+	  break;
 	}
       // TODO handle simple expressions (global_const.c)
-      return false;
+      return result;
     }
   return false;
 }
