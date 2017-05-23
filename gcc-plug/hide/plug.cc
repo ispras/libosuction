@@ -36,7 +36,7 @@ public:
 }; // class pass_hide_globally_invisible
 
 static bool
-hide_p (cgraph_node *node)
+no_external_uses_p (cgraph_node *node)
 {
   return !strcmp (node->name (), "foo");
 }
@@ -54,7 +54,7 @@ pass_hide_globally_invisible::execute (function *)
 
   FOR_EACH_FUNCTION (node)
     {
-      if (hide_p (node))
+      if (no_external_uses_p (node))
 	{
 	  gcc_assert (node->decl);
 	  /* This causes cgraph_externally_visible_p to return FALSE, which leads
