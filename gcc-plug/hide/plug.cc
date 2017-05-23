@@ -38,7 +38,7 @@ public:
 static bool
 unused_p (cgraph_node *node)
 {
-  return !strcmp (node->name (), "foo");
+  return false;
 }
 
 unsigned int
@@ -97,38 +97,24 @@ public:
 static bool
 hide_p (cgraph_node *node)
 {
-  return !strcmp (node->name (), "bar");
+  return !strcmp (node->name (), "foo");
 }
 
 unsigned int
 pass_hide_globally_invisible::execute (function *)
 {
   cgraph_node *node;
-  cgraph_node *next;
 
-  static const char * const visibility_types[] = {
-    "default", "protected", "hidden", "internal"
-  };
+  FOR_EACH_FUNCTION (node)
+    if (hide_p (node))
+      {
+        gcc_assert (node->decl);
+        /* This causes cgraph_externally_visible_p to return FALSE, which leads
+	   to localize_node being called from function_and_variable_visibility
+	   (ipa-visibility aka "visibility" pass).  */
+        TREE_PUBLIC (node->decl) = 0;
+      }
 
-  for (node = symtab->first_function (); node; node = next)
-    {
-      next = symtab->next_function (node);
-
-      if (hide_p (node))
-	{
-	  DECL_VISIBILITY (node->decl) = VISIBILITY_HIDDEN;
-
-	  /* Hmm, look at symtab_node::make_decl_local (and its uses) */
-	  /* Does localize_node () do exactly what we want? */
-
-	  /* cgraph_node::make_local () does that, but sets DECL_VISIBILITY to
-	     DEFAULT. */
-	  node->externally_visible = false;
-	}
-
-      printf ("Name: %s, visibility: %s\n",
-	      node->name(), visibility_types [DECL_VISIBILITY (node->decl)]);
-    }
   return 0;
 }
 
@@ -162,7 +148,7 @@ plugin_init (plugin_name_args *i, plugin_gcc_version *v)
   pass_info.pass = make_pass_hide_globally_invisible (g);
   pass_info.reference_pass_name = "visibility";
   pass_info.ref_pass_instance_number = 1;
-  pass_info.pos_op = PASS_POS_INSERT_AFTER;
+  pass_info.pos_op = PASS_POS_INSERT_BEFORE;
 
   register_callback (i->base_name, PLUGIN_PASS_MANAGER_SETUP, NULL, &pass_info);
 
