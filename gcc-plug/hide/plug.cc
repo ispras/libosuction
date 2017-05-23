@@ -41,20 +41,34 @@ hide_p (cgraph_node *node)
   return !strcmp (node->name (), "foo");
 }
 
+static bool
+lib_private_p (cgraph_node *node)
+{
+  return !strcmp (node->name (), "libprivate");
+}
+
 unsigned int
 pass_hide_globally_invisible::execute (function *)
 {
   cgraph_node *node;
 
   FOR_EACH_FUNCTION (node)
-    if (hide_p (node))
-      {
-        gcc_assert (node->decl);
-        /* This causes cgraph_externally_visible_p to return FALSE, which leads
-	   to localize_node being called from function_and_variable_visibility
-	   (ipa-visibility aka "visibility" pass).  */
-        TREE_PUBLIC (node->decl) = 0;
-      }
+    {
+      if (hide_p (node))
+	{
+	  gcc_assert (node->decl);
+	  /* This causes cgraph_externally_visible_p to return FALSE, which leads
+	     to localize_node being called from function_and_variable_visibility
+	     (ipa-visibility aka "visibility" pass).  */
+	  TREE_PUBLIC (node->decl) = 0;
+	}
+      if (lib_private_p (node))
+	{
+	  gcc_assert (node->decl);
+	  DECL_VISIBILITY (node->decl) = VISIBILITY_HIDDEN;
+	  DECL_VISIBILITY_SPECIFIED (node->decl) = true;
+	}
+    }
 
   return 0;
 }
