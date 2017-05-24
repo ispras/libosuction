@@ -44,6 +44,7 @@ function simple_test_cpp() {
 # echo $(simple_test array.c       "dlsym matched to the signature" 1 "Signature"  )
 # echo $(simple_test array.c       "dlsym set is not limited"	   1 "Not limited")
 # TODO array_assign.c
+# TODO assign.c
 echo $(simple_test_cpp const.cpp "dlsym matched to the signature" 1 "Signature"  )
 echo $(simple_test_cpp const.cpp "dlsym set is not limited" 0 "Limited")
 echo $(simple_test_cpp const.cpp "int main\(int, char\*\*\)->dlsym->\[Create\]" 1 "Symbol Set" )
@@ -51,10 +52,19 @@ echo $(simple_test const_array.c "dlsym matched to the signature" 1 "Signature" 
 echo $(simple_test const_array.c "dlsym set is not limited" 0 "Limited")
 echo $(simple_test const_array.c "main->dlsym->\[bar\]" 1 "Symbol Set" )
 # TODO const_array2.c
+echo $(simple_test const_array3.c "dlsym matched to the signature" 1 "Signature"  )
+echo $(simple_test const_array3.c "dlsym set is not limited" 0 "Limited")
+echo $(simple_test const_array3.c "main->dlsym->\[(foo,bar)|(bar,foo)\]" 1 "Symbol Set" )
+echo $(simple_test const_array4.c "dlsym matched to the signature" 1 "Signature"  )
+echo $(simple_test const_array4.c "dlsym set is not limited" 0 "Limited")
+echo $(simple_test const_array4.c "main->dlsym->\[(foo,bar)|(bar,foo)\]" 1 "Symbol Set" )
+echo $(simple_test const_struct.c "dlsym matched to the signature" 1 "Signature"  )
+echo $(simple_test const_struct.c "dlsym set is not limited" 0 "Limited")
+echo $(simple_test const_struct.c "main->dlsym->\[bar\]" 1 "Symbol Set" )
+
 echo $(simple_test conditional.c "dlsym matched to the signature" 1 "Signature"  )
 echo $(simple_test conditional.c "dlsym set is not limited" 0 "Limited" )
 echo $(simple_test conditional.c "main->dlsym->\[(baz,bar)|(bar,baz)\]" 1 "Symbol Set" )
-# TODO const.cpp
 # TODO c_str_call.cpp
 echo $(simple_test cycle_cgraph.c "dlsym matched to the signature" 1 "Signature"  )
 echo $(simple_test cycle_cgraph.c "dlsym set is not limited" 0 "Limited" )
@@ -69,10 +79,10 @@ echo $(simple_test global_const.c "dlsym set is not limited" 1 "Limited" )
 echo $(simple_test local_array.c "dlsym matched to the signature" 1 "Signature"  )
 echo $(simple_test local_array.c "dlsym set is not limited" 0 "Limited" )
 echo $(simple_test local_array.c "main->dlsym->\[bar\]" 1 "Symbol Set" )
+# TODO local.c (extern variable) + local_d.c + local.h
 echo $(simple_test macro_passing.c "dlsym matched to the signature" 2 "Signature"  )
 echo $(simple_test macro_passing.c "dlsym set is not limited" 0 "Limited" )
 echo $(simple_test macro_passing.c "main->dlsym->\[(foo,bar)|(bar,foo)\]" 1 "Symbol Set" )
-# TODO local.c (extern variable) + local_d.c + local.h
 # TODO phi_rec.c
 echo $(simple_test proxy.c "dlsym matched to the signature" 2 "Signature"  )
 echo $(simple_test proxy.c "dlsym set is not limited" 1 "Not limited" )

@@ -49,63 +49,11 @@ static bool add_symbol (const char* func_name, tree symbol);
 void dump_dynamic_symbol_calls (function* func, call_symbols *symbols);
 void dump_node (cgraph_node *node);
 
-
 static bool
-parse_ref_1 (const char *func_name, tree ctor, 
-	     auto_vec<tree, 10> *stack, unsigned HOST_WIDE_INT depth)
-{
-  unsigned HOST_WIDE_INT cnt;
-  tree cfield, cval, field;
-  tree t = (*stack)[depth];
-  /* At the bottom of the stack, string values should be */
-  if (depth == 0)
-    {
-      switch (TREE_CODE(t)) 
-	{
-	case ARRAY_REF:
-	  FOR_EACH_CONSTRUCTOR_ELT (CONSTRUCTOR_ELTS (ctor), cnt, cfield, cval)
-	    if (!add_symbol (func_name, cval))
-	      return false;
-	  break;
-
-	case COMPONENT_REF:
-	  field = TREE_OPERAND (t, 1);
-	  FOR_EACH_CONSTRUCTOR_ELT (CONSTRUCTOR_ELTS (ctor), cnt, cfield, cval)
-	    if (field == cfield)
-	      return add_symbol (func_name, cval);
-	  break;
-
-	default:
-	  return false;
-	}
-      return true;
-    }
-  /* Dive into constructor */
-  switch (TREE_CODE(t)) 
-    {
-    case ARRAY_REF:
-      FOR_EACH_CONSTRUCTOR_ELT (CONSTRUCTOR_ELTS (ctor), cnt, cfield, cval)
-	if (!parse_ref_1 (func_name, cval, stack, depth - 1))
-	  return false;
-      break;
-
-    case COMPONENT_REF:
-      field = TREE_OPERAND (t, 1);
-      FOR_EACH_CONSTRUCTOR_ELT (CONSTRUCTOR_ELTS (ctor), cnt, cfield, cval)
-	if (field == cfield)
-	  return parse_ref_1 (func_name, cval, stack, depth - 1);
-      break;
-
-    default:
-      return false;
-    }
-  return true;
-}
-
-static bool
-parse_ref (const char *func_name, tree *expr_p)
+parse_ref (const char* func_name, tree *expr_p)
 {
   tree *p, base, ctor;
+  int i;
   auto_vec<tree, 10> expr_stack;
   location_t loc = EXPR_LOCATION (*expr_p);
   for (p = expr_p; ; p = &TREE_OPERAND (*p, 0))
@@ -119,13 +67,29 @@ parse_ref (const char *func_name, tree *expr_p)
       else
 	break;
     }
-  tree t = expr_stack[expr_stack.length () - 1];
-  base = TREE_OPERAND (t, 0);
-  ctor = ctor_for_folding (base);
-  /* Cannot find a constructor of the decl */
-  if (ctor == NULL || ctor == error_mark_node)
-    return false;
-  return parse_ref_1 (func_name, ctor, &expr_stack, expr_stack.length () - 1); 
+  for (i = expr_stack.length () - 1; i >= 0; i--)
+    {
+      tree t = expr_stack[i];
+      // Bottom of the stack should contain const strings
+      if (!i) 
+	{
+	  if (TREE_CODE (t) == ARRAY_REF)
+	    {
+	      base = TREE_OPERAND (t, 0);
+	      ctor = ctor_for_folding (base);
+	      /* Cannot find a constructor of the decl */
+	      if (ctor == NULL || ctor == error_mark_node)
+		return false;
+
+	      unsigned HOST_WIDE_INT cnt;
+	      tree cfield, cval;
+	      FOR_EACH_CONSTRUCTOR_ELT (CONSTRUCTOR_ELTS (ctor), cnt, cfield, cval)
+		if (!add_symbol (func_name, cval))
+		  return false;
+	    }
+	}
+    }
+  return true;
 }
 
 static bool
@@ -154,7 +118,7 @@ parse_symbol (struct cgraph_node *node, tree symbol, struct signature *sign)
 {
   /* Constant string */
   if (add_symbol (sign->func_name, symbol)) 
-    return true;
+      return true;
 
   if (TREE_CODE (symbol) == SSA_NAME)
     {
@@ -216,17 +180,7 @@ parse_symbol (struct cgraph_node *node, tree symbol, struct signature *sign)
 	      || gimple_assign_unary_nop_p (def_stmt))
 	    {
 	      tree arg = gimple_assign_rhs1 (def_stmt);
-	      switch (TREE_CODE (arg)) 
-		{
-		  case ARRAY_REF:
-		  case COMPONENT_REF:
-		    result &= parse_ref (sign->func_name, &arg); 
-		    break;
-
-		  default:
-		    result &= false;
-		    break;
-		}
+	      result &= parse_ref (sign->func_name, &arg); 
 	    }
 	  else
 	    result &= false;
