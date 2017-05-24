@@ -35,16 +35,22 @@ public:
 
 }; // class pass_hide_globally_invisible
 
+static const char *
+decl_name (cgraph_node *node)
+{
+  return IDENTIFIER_POINTER (DECL_ASSEMBLER_NAME (node->decl));
+}
+
 static bool
 no_external_uses_p (cgraph_node *node)
 {
-  return !strcmp (node->name (), "foo");
+  return !strcmp (decl_name (node), "staticfoo");
 }
 
 static bool
 lib_private_p (cgraph_node *node)
 {
-  return !strcmp (node->name (), "libprivate");
+  return !strcmp (decl_name (node), "libprivate");
 }
 
 unsigned int
