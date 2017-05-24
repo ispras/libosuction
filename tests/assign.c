@@ -1,19 +1,12 @@
 #include <dlfcn.h>
 
-struct extra
-{
-  const char *fun_name;
-};
-
 static const struct
 {
-  const struct extra fun[2];
+  const char* fun[2];
 } names[] =
 {
-    {{{"bar"}, {"bar1"}}}
+    {{"bar", "bar1"}}
 };
-
-
 
 int main ()
 {
@@ -24,7 +17,7 @@ int main ()
   handle = dlopen("./testlib.so", RTLD_NOW);
 
   for (i = 0; i < 1; i++) {
-      my_dyn_func = (void (*)(int)) dlsym (handle, names[i].fun[0].fun_name);
+      my_dyn_func = (void (*)(int)) dlsym (handle, names[i].fun[0]);
       my_dyn_func(2);
   }   
 

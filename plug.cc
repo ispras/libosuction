@@ -223,6 +223,10 @@ parse_symbol (struct cgraph_node *node, tree symbol, struct signature *sign)
 		    result &= parse_ref (sign->func_name, &arg); 
 		    break;
 
+		  case ADDR_EXPR:
+		    result &= parse_symbol (node, arg, sign);
+		    break;
+
 		  default:
 		    result &= false;
 		    break;
