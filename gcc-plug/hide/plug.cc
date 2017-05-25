@@ -6,6 +6,8 @@
 #include "plugin-version.h"
 #include "context.h"
 #include "cgraph.h"
+#include "splay-tree.h"
+#include "diagnostic-core.h"
 
 int plugin_is_GPL_compatible;
 
@@ -33,6 +35,13 @@ public:
 
   virtual unsigned int execute (function *);
 
+private:
+  bool no_external_uses_p (cgraph_node *node);
+  bool lib_private_p (cgraph_node *node);
+  void read_vis_changes (void);
+
+  splay_tree static_funcs;
+  splay_tree libprivate_funcs;
 }; // class pass_hide_globally_invisible
 
 static const char *
@@ -41,22 +50,85 @@ decl_name (cgraph_node *node)
   return IDENTIFIER_POINTER (DECL_ASSEMBLER_NAME (node->decl));
 }
 
-static bool
-no_external_uses_p (cgraph_node *node)
+
+bool
+pass_hide_globally_invisible::no_external_uses_p (cgraph_node *node)
 {
-  return !strcmp (decl_name (node), "staticfoo");
+  return !!splay_tree_lookup (static_funcs,
+			      (splay_tree_key) decl_name (node));
 }
 
-static bool
-lib_private_p (cgraph_node *node)
+bool
+pass_hide_globally_invisible::lib_private_p (cgraph_node *node)
 {
-  return !strcmp (decl_name (node), "libprivate");
+  return !!splay_tree_lookup (libprivate_funcs,
+			      (splay_tree_key) decl_name (node));
+}
+
+ /* We assume funciton names in the file F are prefixed by their length.   */
+static void
+read_decl_names (FILE *f, int num_funcs, splay_tree funcs)
+{
+  char *decl_name = NULL;
+  size_t capacity = 0;
+  char fmt_str[20] = { '%' };
+  int i;
+
+  for (i = 0; i < num_funcs; i++)
+    {
+      size_t len;
+      char *name;
+
+      if (fscanf (f, "%lu", &len) != 1)
+	fatal_error (UNKNOWN_LOCATION, "cannot parse visibility modifications");
+
+      if (len + 1 > capacity)
+	{
+	  decl_name = (char *) xrealloc (decl_name, len + 1);
+	  capacity = len + 1;
+	  sprintf (fmt_str + 1, "%lus", len);
+	}
+
+      fscanf (f, fmt_str, decl_name);
+
+      name = xstrdup (decl_name);
+      splay_tree_insert (funcs, (splay_tree_key) name, 0);
+    }
+
+  free (decl_name);
+}
+
+void
+pass_hide_globally_invisible::read_vis_changes (void)
+{
+  FILE *f;
+  int num_statics, num_libpriv;
+
+  /* FIXME: pass filename as a plugin argument */
+  const char *fname = "/tmp/vis.txt";
+  f = fopen (fname, "r");
+  if (!f)
+    fatal_error (UNKNOWN_LOCATION, "cannot open %s", fname);
+
+  fscanf (f, "%d %d", &num_statics, &num_libpriv);
+  read_decl_names (f, num_statics, static_funcs);
+  read_decl_names (f, num_libpriv, libprivate_funcs);
+
+  fclose (f);
 }
 
 unsigned int
 pass_hide_globally_invisible::execute (function *)
 {
   cgraph_node *node;
+
+  static_funcs = splay_tree_new ((splay_tree_compare_fn) strcmp,
+				 (splay_tree_delete_key_fn) free,
+				 0);
+  libprivate_funcs = splay_tree_new ((splay_tree_compare_fn) strcmp,
+				     (splay_tree_delete_key_fn) free,
+				     0);
+  read_vis_changes ();
 
   FOR_EACH_FUNCTION (node)
     {
@@ -76,6 +148,8 @@ pass_hide_globally_invisible::execute (function *)
 	}
     }
 
+  splay_tree_delete (static_funcs);
+  splay_tree_delete (libprivate_funcs);
   return 0;
 }
 
