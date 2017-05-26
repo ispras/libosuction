@@ -1,0 +1,1 @@
+int libprivate (int a);
