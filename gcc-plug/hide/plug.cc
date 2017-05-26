@@ -30,16 +30,20 @@ class pass_hide_globally_invisible : public simple_ipa_opt_pass
 {
 public:
   pass_hide_globally_invisible (gcc::context *ctxt)
-    : simple_ipa_opt_pass (pass_data_hide_globally_invisible, ctxt)
+    : simple_ipa_opt_pass (pass_data_hide_globally_invisible, ctxt),
+    fname (NULL)
   {}
 
   virtual unsigned int execute (function *);
+
+  void set_fname (const char *fname_) { fname = fname_; }
 
 private:
   bool no_external_uses_p (cgraph_node *node);
   bool lib_private_p (cgraph_node *node);
   void read_vis_changes (void);
 
+  const char *fname; /* File to read visibility modifications info from.  */
   splay_tree static_funcs;
   splay_tree libprivate_funcs;
 }; // class pass_hide_globally_invisible
@@ -104,8 +108,6 @@ pass_hide_globally_invisible::read_vis_changes (void)
   FILE *f;
   int num_statics, num_libpriv;
 
-  /* FIXME: pass filename as a plugin argument */
-  const char *fname = "/tmp/vis.txt";
   f = fopen (fname, "r");
   if (!f)
     fatal_error (UNKNOWN_LOCATION, "cannot open %s", fname);
@@ -156,14 +158,17 @@ pass_hide_globally_invisible::execute (function *)
 } // anon namespace
 
 static simple_ipa_opt_pass *
-make_pass_hide_globally_invisible (gcc::context *ctxt)
+make_pass_hide_globally_invisible (gcc::context *ctxt, const char *filename)
 {
-  return new pass_hide_globally_invisible (ctxt);
+  pass_hide_globally_invisible *pass = new pass_hide_globally_invisible (ctxt);
+  pass->set_fname (filename);
+  return pass;
 }
 
 int
 plugin_init (plugin_name_args *i, plugin_gcc_version *v)
 {
+  plugin_argument *arg;
   plugin_init_func check = plugin_init;
   struct register_pass_info pass_info;
 
@@ -173,7 +178,19 @@ plugin_init (plugin_name_args *i, plugin_gcc_version *v)
       return 1;
     }
 
-  pass_info.pass = make_pass_hide_globally_invisible (g);
+  char *fname = NULL;
+  for (arg = i->argv; arg; arg++)
+    if (!strcmp (arg->key, "fname"))
+      {
+	fname = arg->value;
+	break;
+      }
+  if (!fname)
+    fatal_error (UNKNOWN_LOCATION,
+		 "file with visibility modifications not specified"
+		 "(pass 'fname' argument to the plugin)");
+
+  pass_info.pass = make_pass_hide_globally_invisible (g, fname);
   pass_info.reference_pass_name = "visibility";
   pass_info.ref_pass_instance_number = 1;
   pass_info.pos_op = PASS_POS_INSERT_BEFORE;
