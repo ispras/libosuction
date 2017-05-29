@@ -19,9 +19,12 @@ _Static_assert(LD_PLUGIN_API_VERSION == 1, "unexpected plugin API version");
 static struct {
 	const char *output_name;
 	int is_dso;
+	int nobj;
+	int next_scn_uid;
 	struct objfile {
 		struct objfile *next;
 		const char *name;
+		off_t offset;
 		struct section {
 			struct objfile *object;
 			const char *name;
@@ -44,9 +47,10 @@ static struct {
 			int used;
 			int shndx;
 			int next;
-			int graphid;
+			int uid;
 		} *sections;
 		int num_sections;
+		int uids;
 		struct sym *syms;
 		int nsyms;
 	} *obj_list;
@@ -136,7 +140,7 @@ dg_begin(const char *filename, int is_dso)
 static void
 dg_print_obj(FILE *f, const struct objfile *o, int subgraph)
 {
-	static int clusterid, sectionid;
+	static int clusterid;
 	if (subgraph)
 		fprintf(f, "subgraph cluster_o_%d { ", clusterid++);
 	else
@@ -145,11 +149,10 @@ dg_print_obj(FILE *f, const struct objfile *o, int subgraph)
 	struct section *s;
 	for (s = o->sections; s < o->sections + o->num_sections; s++) {
 		if (!s->name) continue;
-		int id = s->graphid = sectionid++;
 		if (!s->used) continue;
-		fprintf(f, "\tsubgraph cluster_s_%d { ", id);
+		fprintf(f, "\tsubgraph cluster_s_%d { ", s->uid);
 		fprintf(f, "label=\"%s: size %zd\";\n", s->name, s->size);
-		fprintf(f, "\t\tsection_%d[shape=plain,label=\".\"];\n", id);
+		fprintf(f, "\t\tsection_%d[shape=plain,label=\".\"];\n", s->uid);
 		fprintf(f, "\t}\n");
 	}
 	fprintf(f, "}\n");
@@ -160,10 +163,10 @@ dg_print_rels(FILE *f, const struct objfile *o)
 	struct section *s;
 	for (s = o->sections; s < o->sections + o->num_sections; s++) {
 		if (!s->used) continue;
-		int sid = s->graphid;
+		int sid = s->uid;
 		for (struct rel *r = s->rels; r < s->rels + s->nrels; r++) {
 			if (!r->sym || !r->sym->section) continue;
-			int rid = r->sym->section->graphid;
+			int rid = r->sym->section->uid;
 			fprintf(f, "\tsection_%d->section_%d[", sid, rid);
 			if (sid != rid)
 				fprintf(f, "ltail=cluster_s_%d,lhead=cluster_s_%d,",
@@ -175,7 +178,7 @@ dg_print_rels(FILE *f, const struct objfile *o)
 	}
 }
 static void
-dg_print_all(FILE *f)
+dg_print_all_graphviz(FILE *f)
 {
 	fprintf(f, "digraph \"\" { ");
 	fprintf(f, "label=\"%s\";\n", dg_info.output_name);
@@ -184,6 +187,54 @@ dg_print_all(FILE *f)
 	for (struct objfile *o = dg_info.obj_list; o; o = o->next)
 		dg_print_rels(f, o);
 	fprintf(f, "}\n");
+}
+static void
+dg_print(FILE *f)
+{
+	int nobj = dg_info.nobj, nscn = dg_info.next_scn_uid;
+	printf("%c %d %d\n", "ED"[dg_info.is_dso], nobj, nscn);
+	int *scndeps = calloc(nscn, sizeof *scndeps);
+	for (struct objfile *o = dg_info.obj_list; o; o = o->next) {
+		printf("%d\t%lld\t%s\n", o->uids, (long long)o->offset, o->name);
+		for (struct section *s = o->sections;
+		     s < o->sections + o->num_sections; s++)
+			if (s->name) {
+				printf("\t%d\t%zd\t%s\n", s->used, s->size, s->name);
+				int ndeps = 0;
+				for (struct rel *r = s->rels;
+				     r < s->rels + s->nrels; r++)
+					if (r->sym && r->sym->section)
+						ndeps += !scndeps[r->sym->section->uid]++;
+				printf("\t\t%d ", ndeps);
+				for (struct rel *r = s->rels;
+				     r < s->rels + s->nrels; r++)
+					if (r->sym && r->sym->section)
+						if (!--scndeps[r->sym->section->uid])
+							printf("%d ", r->sym->section->uid);
+				printf("\n");
+			}
+	}
+	free(scndeps);
+	int nsym = 0;
+	for (struct objfile *o = dg_info.obj_list; o; o = o->next)
+		for (struct sym *s = o->syms; s < o->syms + o->nsyms; s++)
+			nsym += !!s->name;
+	printf("%d\n", nsym);
+	for (struct objfile *o = dg_info.obj_list; o; o = o->next)
+		for (struct sym *s = o->syms; s < o->syms + o->nsyms; s++) {
+			if (!s->name)
+				continue;
+			printf("%c%c %d\t%s\n",
+			       "DCWU"[s->weak], "dph"[s->vis],
+			       s->section ? s->section->uid : -1, s->name);
+			int ndeps = 0;
+			for (struct rel *r = s->firstrel; r; r = r->nextrel)
+				ndeps++;
+			printf("\t%d ", ndeps);
+			for (struct rel *r = s->firstrel; r; r = r->nextrel)
+				printf("%d ", r->section->uid);
+			printf("\n");
+		}
 }
 static void
 dg_mark_used(struct section *s)
@@ -199,6 +250,7 @@ dg_end(void)
 	struct sym *s = sym_htab_lookup_only("_start");
 	if (s && s->section)
 		s->section->used = 1;
+#if 0
 	if (dg_info.is_dso)
 		for (struct objfile *o = dg_info.obj_list; o; o = o->next)
 			for (s = o->syms; s < o->syms + o->nsyms; s++)
@@ -209,17 +261,26 @@ dg_end(void)
 		     s < o->sections + o->num_sections; s++)
 			if (s->used == 1)
 				dg_mark_used(s);
-	dg_print_all(stdout);
+#endif
+	struct objfile *prev = 0;
+	for (struct objfile *o = dg_info.obj_list, *n; o; o = n)
+		n = o->next, o->next = prev, prev = o;
+	dg_info.obj_list = prev;
+	//dg_print_all_graphviz(stdout);
+	dg_print(stdout);
 }
 static void
-dg_object_start(const char *filename, int num_sections)
+dg_object_start(const char *filename, off_t offset, int num_sections)
 {
 	struct objfile *o = malloc(sizeof *o);
 	o->next = dg_info.obj_list;
 	o->name = strdup(filename);
+	o->offset = offset;
 	o->sections = calloc(num_sections, sizeof *o->sections);
 	o->num_sections = num_sections;
+	o->uids = 0;
 	dg_info.obj_list = o;
+	dg_info.nobj++;
 }
 static struct section *
 dg_section(int n)
@@ -238,6 +299,8 @@ dg_section_init(struct section *s, const char *name, size_t size, int used)
 	if (!used && size && *name=='.' && o<7 && !strcmp(name+2, keep + o*5))
 		used = 1;
 	s->used = used;
+	dg_info.obj_list->uids++;
+	s->uid = dg_info.next_scn_uid++;
 }
 static struct sym *
 dg_syms_alloc(size_t nsyms)
@@ -287,7 +350,7 @@ sym_weak(int elfbind, int elfscn)
 	return elfbind == STB_WEAK ? W_WEAK : W_STRONG;
 }
 static const char *
-process_elf(const char *filename, const unsigned char *view)
+process_elf(const char *filename, off_t offset, const unsigned char *view)
 {
 	const ElfNN_(Ehdr) *ehdr = (void *)view;
 	typedef ElfNN_(Shdr) Shdr;
@@ -308,7 +371,7 @@ process_elf(const char *filename, const unsigned char *view)
 	if (!shnum && ehdr->e_shoff)
 		shnum = shdrs[0].sh_size;
 	if (shnum < 2) return 0;
-	dg_object_start(filename, shnum);
+	dg_object_start(filename, offset, shnum);
 	int shstrndx = ehdr->e_shstrndx;
 	if (shstrndx == SHN_XINDEX)
 		shstrndx = shdrs[0].sh_link;
@@ -327,7 +390,7 @@ process_elf(const char *filename, const unsigned char *view)
 			dg_section_init(dg_section(i),
 					shstrtab + shdr->sh_name,
 			                shdr->sh_size, used);
-			continue;;
+			continue;
 		case SHT_SYMTAB_SHNDX:
 			dg_section(shdr->sh_link)->shndx = i;
 			continue;
@@ -373,7 +436,7 @@ process_elf(const char *filename, const unsigned char *view)
 			}
 			if (!sym->st_name)
 				return "unnamed non-local symbol";
-			struct sym ssym;
+			struct sym ssym = {0};
 			ssym.name = strings + sym->st_name;
 			int shndx = sym->st_shndx;
 			if (shndx == SHN_XINDEX)
@@ -391,10 +454,12 @@ process_elf(const char *filename, const unsigned char *view)
 				*syms = ssym;
 				*symslot = syms++;
 				syms_htab.used++;
-			} else if (!ssym.weak && !(*symslot)->weak)
+			} else if (!ssym.weak && !(*symslot)->weak) {
 				return "duplicate definition";
-			else if (ssym.weak < (*symslot)->weak)
+			} else if (ssym.weak < (*symslot)->weak) {
+				ssym.firstrel = (*symslot)->firstrel;
 				**symslot = ssym;
+			}
 			symptrs[j] = *symslot;
 		}
 	}
@@ -444,7 +509,7 @@ claim_file_handler(const struct ld_plugin_input_file *file, int *claimed)
 	if ((status = get_view(file->handle, &view)))
 		return error("%s: get_view: %d", filename, status);
 
-	const char *errmsg = process_elf(filename, view);
+	const char *errmsg = process_elf(filename, file->offset, view);
 	if (errmsg)
 		return error("%s: %s", filename, errmsg);
 	return 0;
