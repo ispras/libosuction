@@ -128,8 +128,29 @@ parse_ref (struct cgraph_node *node, gimple *stmt,
   ctor = ctor_for_folding (base);
   /* Cannot find a constructor of the decl */
   if (ctor == NULL || ctor == error_mark_node)
-    return false;
-  return parse_ref_1 (node, stmt, sign, ctor, &expr_stack, expr_stack.length () - 1); 
+    {
+      basic_block bb;
+      FOR_EACH_BB_FN (bb, node->get_fun ())
+	{
+	  gimple_stmt_iterator i;
+	  for (i = gsi_start_bb (bb); !gsi_end_p (i); gsi_next (&i))
+	    {
+	      gimple* stmt2 = gsi_stmt (i);
+	      if (!gimple_assign_single_p (stmt2)
+		  && !gimple_assign_unary_nop_p (stmt2))
+		continue;
+
+	      tree lhs = gimple_assign_lhs (stmt2);
+	      tree rhs = gimple_assign_rhs1 (stmt2);
+	      if (TREE_CODE (lhs) == TREE_CODE (t)
+		  && TREE_OPERAND (lhs, 0) == base)
+		if (!parse_symbol (node, stmt2, rhs, sign))
+		  return false;
+	    }
+	}
+      return true;
+    }
+  return parse_ref_1 (node, stmt, sign, ctor, &expr_stack, expr_stack.length () - 1);
 }
 
 /* 
@@ -226,28 +247,13 @@ parse_symbol (struct cgraph_node *node, gimple *stmt,
 	  bool res = true;
 
 	  // TODO check the current function
+	  // TODO global constants
 	  for (i = 0; sym_node->iterate_referring (i, ref); i++)
 	    if (ref->stmt != stmt)
 	      res &= parse_gimple_stmt (node, ref->stmt, sign);
 
 	  return res && (i > 1);
 	}
-      //      ctor = ctor_for_folding (base); 
-      //      if (TREE_CODE (ctor) == STRING_CST)
-      //	{
-      //	  symname = TREE_STRING_POINTER (ctor);
-      //	  symbols = dynamic_symbols.get (func_name);
-      //
-      //	  if (!symbols)
-      //	    {
-      //	      auto empty_symbols = new hash_set<const char*, nofree_string_hash>;
-      //	      dynamic_symbols.put (func_name, empty_symbols);
-      //	      symbols = &empty_symbols;
-      //	    }
-      //	  (*symbols)->add (symname);
-      //	  return true;
-      //	}
-      //      break;
 
     default:
       return false;

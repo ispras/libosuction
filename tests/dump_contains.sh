@@ -53,7 +53,9 @@ echo $(simple_test_cpp const.cpp "int main\(int, char\*\*\)->dlsym->\[Create\]" 
 echo $(simple_test const_array.c "dlsym matched to the signature" 1 "Signature"  )
 echo $(simple_test const_array.c "dlsym set is not limited" 0 "Limited")
 echo $(simple_test const_array.c "main->dlsym->\[bar\]" 1 "Symbol Set" )
-# TODO const_array2.c
+echo $(simple_test const_array2.c "dlsym matched to the signature" 1 "Signature"  )
+echo $(simple_test const_array2.c "dlsym set is not limited" 0 "Limited")
+echo $(simple_test const_array2.c "main->dlsym->\[(foo,bar)|(bar,foo)\]" 1 "Symbol Set" )
 echo $(simple_test const_array3.c "dlsym matched to the signature" 1 "Signature"  )
 echo $(simple_test const_array3.c "dlsym set is not limited" 0 "Limited")
 echo $(simple_test const_array3.c "main->dlsym->\[(foo,bar)|(bar,foo)\]" 1 "Symbol Set" )
