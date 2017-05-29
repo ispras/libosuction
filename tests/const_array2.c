@@ -1,5 +1,7 @@
 #include <dlfcn.h>
 
+static const char *mn = "zoo";
+
 int main (int argc, char **argv)
 {
   void *handle;
@@ -11,7 +13,7 @@ int main (int argc, char **argv)
       "bar",
   };  
 
-
+  symbols[1] = mn;
   handle = dlopen("./testlib.so", RTLD_NOW);
 
   for (i = 0; i < 2; i++) {

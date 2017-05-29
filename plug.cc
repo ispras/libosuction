@@ -241,13 +241,15 @@ parse_symbol (struct cgraph_node *node, gimple *stmt,
 
     case VAR_DECL:
 	{
-	  symtab_node *sym_node = symtab_node::get (symbol);
+	  varpool_node *sym_node = varpool_node::get (symbol);
 	  ipa_ref *ref = NULL;
 	  int i;
 	  bool res = true;
 
 	  // TODO check the current function
-	  // TODO global constants
+	  if (sym_node->ctor_useable_for_folding_p ())
+	    return parse_symbol (node, stmt, ctor_for_folding (symbol), sign);
+
 	  for (i = 0; sym_node->iterate_referring (i, ref); i++)
 	    if (ref->stmt != stmt)
 	      res &= parse_gimple_stmt (node, ref->stmt, sign);
