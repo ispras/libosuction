@@ -141,6 +141,8 @@ pass_hide_globally_invisible::execute (function *)
 	     to localize_node being called from function_and_variable_visibility
 	     (ipa-visibility aka "visibility" pass).  */
 	  TREE_PUBLIC (node->decl) = 0;
+	  /* Weak static symbols make no sense.  */
+	  DECL_WEAK (node->decl) = 0;
 	}
       if (lib_private_p (node))
 	{
