@@ -404,12 +404,11 @@ process_elf(const char *filename, off_t offset, const unsigned char *view)
 		case SHT_REL: case SHT_RELA:
 			dg_section(i)->next = relidx;
 			relidx = i;
-		case SHT_NULL: case SHT_STRTAB: case SHT_NOTE:
+		case SHT_NULL: case SHT_STRTAB: case SHT_NOTE: case SHT_GROUP:
 			continue;
 		case SHT_HASH: case SHT_DYNAMIC: case SHT_SHLIB:
 		case SHT_DYNSYM:
 			return "unexpected section type";
-		case SHT_GROUP:
 		default: return "unhandled section type";
 		}
 	}
