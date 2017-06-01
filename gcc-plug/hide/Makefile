@@ -14,8 +14,8 @@ test: $(PLUGIN)
 
 vis.txt: FORCE
 	echo "1 1" > vis.txt
-	echo "9 staticfoo" >> vis.txt
-	echo "10 libprivate" >> vis.txt
+	echo "staticfoo" >> vis.txt
+	echo "libprivate" >> vis.txt
 
 test-libprivate.so: $(PLUGIN) libpriv1.c libpriv2.c libpriv1.h vis.txt
 	$(CC) -fplugin=./$(PLUGIN) -fplugin-arg-$(PLUGNAME)-fname=vis.txt -c -fpic -O2 -flto libpriv1.c -o libpriv1.o

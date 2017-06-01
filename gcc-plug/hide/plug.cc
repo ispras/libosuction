@@ -74,32 +74,16 @@ static void
 read_decl_names (FILE *f, int num_funcs, splay_tree funcs)
 {
   char *decl_name = NULL;
-  size_t capacity = 0;
-  char fmt_str[20] = { '%' };
   int i;
 
   for (i = 0; i < num_funcs; i++)
     {
-      size_t len;
-      char *name;
+      if (fscanf (f, "%ms", &decl_name) != 1)
+	fatal_error (UNKNOWN_LOCATION,
+		     "error reading static/libprivate symbol names");
 
-      if (fscanf (f, "%lu", &len) != 1)
-	fatal_error (UNKNOWN_LOCATION, "cannot parse visibility modifications");
-
-      if (len + 1 > capacity)
-	{
-	  decl_name = (char *) xrealloc (decl_name, len + 1);
-	  capacity = len + 1;
-	  sprintf (fmt_str + 1, "%lus", len);
-	}
-
-      fscanf (f, fmt_str, decl_name);
-
-      name = xstrdup (decl_name);
-      splay_tree_insert (funcs, (splay_tree_key) name, 0);
+      splay_tree_insert (funcs, (splay_tree_key) decl_name, 0);
     }
-
-  free (decl_name);
 }
 
 void
