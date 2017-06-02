@@ -53,6 +53,17 @@ void dump_dynamic_symbol_calls (function* func, call_symbols *symbols);
 void dump_node (cgraph_node *node);
 
 static bool
+is_read_only (struct varpool_node *node)
+{
+  unsigned i;
+  ipa_ref *ref = NULL;
+  for (i = 0; node->iterate_referring (i, ref); i++)
+    if (ref->use != IPA_REF_LOAD)
+      return false;
+  return true;
+}
+
+static bool
 compare_ref (tree *t1, tree *t2)
 {
   tree *p1 = t1, *p2 = t2;
@@ -352,19 +363,14 @@ parse_symbol (struct cgraph_node *node, gimple *stmt,
 	  if (TREE_STATIC (symbol) || DECL_EXTERNAL (symbol) || in_lto_p)
 	    {
 	      varpool_node *sym_node = varpool_node::get (symbol);
-	      ipa_ref *ref = NULL;
-	      int i;
-	      bool res = true;
 
 	      if (sym_node->ctor_useable_for_folding_p ())
 		return parse_symbol (node, stmt, ctor_for_folding (symbol), sign);
 
-	      // TODO check the current function
-	      for (i = 0; sym_node->iterate_referring (i, ref); i++)
-		if (ref->stmt != stmt)
-		  res &= parse_gimple_stmt (node, ref->stmt, sign);
+	      if (is_read_only (sym_node) && DECL_INITIAL (symbol))
+		return parse_symbol (node, stmt, DECL_INITIAL (symbol), sign);
 
-	      return res && (i > 1);
+	      return false;
 	    }
 	  else
 	    {
