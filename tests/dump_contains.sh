@@ -43,7 +43,9 @@ function simple_test_cpp() {
 }
 # echo $(simple_test array.c       "dlsym matched to the signature" 1 "Signature"  )
 # echo $(simple_test array.c       "dlsym set is not limited"	   1 "Not limited")
-# TODO array_assign.c
+echo $(simple_test array_assign.c "dlsym matched to the signature" 1 "Signature"  )
+echo $(simple_test array_assign.c "dlsym set is not limited" 0 "Limited" )
+echo $(simple_test array_assign.c "main->dlsym->\[init\]" 1 "Symbol Set" )
 echo $(simple_test assign.c "dlsym matched to the signature" 1 "Signature"  )
 echo $(simple_test assign.c "dlsym set is not limited" 0 "Limited")
 echo $(simple_test assign.c "main->dlsym->\[bar\]" 1 "Symbol Set" )
@@ -89,7 +91,8 @@ echo $(simple_test func_macro.c "foo->dlsym->\[foo\]" 1 "Symbol Set" )
 echo $(simple_test global_const.c "dlsym matched to the signature" 1 "Signature"  )
 echo $(simple_test global_const.c "dlsym set is not limited" 1 "Limited" )
 # TODO Skipped global_handler.c
-# global_var.c
+# TODO global_var.c
+# TODO global_struct.c
 echo $(simple_test local_array.c "dlsym matched to the signature" 1 "Signature"  )
 echo $(simple_test local_array.c "dlsym set is not limited" 0 "Limited" )
 echo $(simple_test local_array.c "main->dlsym->\[bar\]" 1 "Symbol Set" )

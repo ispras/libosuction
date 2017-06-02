@@ -123,32 +123,11 @@ collect_values (struct cgraph_node *node, tree *expr, struct signature *sign)
 	      tree rhs = gimple_assign_rhs1 (stmt);
 	      tree lhs = gimple_assign_lhs (stmt);
 
-	      if (compare_ref (expr, &lhs))
+	      if (compare_ref (expr, &lhs) && !TREE_CLOBBER_P (rhs))
 		{
 		  assign = true;
 		  if (!parse_symbol (node, stmt, rhs, sign))
 		    return false;
-		}
-	      else if (TREE_CODE (lhs) == MEM_REF)
-		{
-		  tree base = TREE_OPERAND (lhs, 0), t;
-		  if (TREE_CODE (base) != ADDR_EXPR)
-		    continue;
-		  base = TREE_OPERAND (base, 0);
-		  switch (TREE_CODE (base))
-		    {
-		    case ARRAY_REF:
-		      t = get_base_address (*expr);
-		      if (compare_ref (&lhs, &t))
-			{
-			  assign = true;
-			  if (!parse_symbol (node, stmt, rhs, sign))
-			    return false;
-			}
-		    case COMPONENT_REF:
-		    default:
-		      break;
-		    }
 		}
 	    }
 	}
@@ -369,20 +348,30 @@ parse_symbol (struct cgraph_node *node, gimple *stmt,
 
     case VAR_DECL:
 	{
-	  varpool_node *sym_node = varpool_node::get (symbol);
-	  ipa_ref *ref = NULL;
-	  int i;
-	  bool res = true;
+	  /* Does a variable have a node in symtable  */
+	  if (TREE_STATIC (symbol) || DECL_EXTERNAL (symbol) || in_lto_p)
+	    {
+	      varpool_node *sym_node = varpool_node::get (symbol);
+	      ipa_ref *ref = NULL;
+	      int i;
+	      bool res = true;
 
-	  if (sym_node->ctor_useable_for_folding_p ())
-	    return parse_symbol (node, stmt, ctor_for_folding (symbol), sign);
+	      if (sym_node->ctor_useable_for_folding_p ())
+		return parse_symbol (node, stmt, ctor_for_folding (symbol), sign);
 
-	  // TODO check the current function
-	  for (i = 0; sym_node->iterate_referring (i, ref); i++)
-	    if (ref->stmt != stmt)
-	      res &= parse_gimple_stmt (node, ref->stmt, sign);
+	      // TODO check the current function
+	      for (i = 0; sym_node->iterate_referring (i, ref); i++)
+		if (ref->stmt != stmt)
+		  res &= parse_gimple_stmt (node, ref->stmt, sign);
 
-	  return res && (i > 1);
+	      return res && (i > 1);
+	    }
+	  else
+	    {
+	      return !contains_ref_expr (node, &symbol)
+		&& collect_values (node, &symbol, sign);
+	    }
+	  return false;
 	}
 
     default:
