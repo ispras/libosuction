@@ -89,7 +89,7 @@ sym_htab_expand(void)
 {
 	struct symsht oldht = syms_htab;
 	syms_htab.used = oldht.used;
-	syms_htab.size = oldht.size ? 2 * oldht.size : 1;
+	syms_htab.size = oldht.size ? 2 * oldht.size : 2;
 	syms_htab.hashes = calloc(syms_htab.size, sizeof *syms_htab.hashes);
 	syms_htab.syms = calloc(syms_htab.size, sizeof *syms_htab.syms);
 	for (size_t i = 0; i < oldht.size; i++)
@@ -199,7 +199,7 @@ dg_print(FILE *f)
 		for (struct section *s = o->sections;
 		     s < o->sections + o->num_sections; s++)
 			if (s->name) {
-				printf("\t%d\t%zd\t%s\n", s->used, s->size, s->name);
+				printf("\t%d\t%zd\t%s\t%d\n", s->used, s->size, s->name, s->uid);
 				int ndeps = 0;
 				for (struct rel *r = s->rels;
 				     r < s->rels + s->nrels; r++)

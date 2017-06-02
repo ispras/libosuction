@@ -5,13 +5,19 @@ CFLAGS += -g
 
 TEST-OBJ =  test1a.o test1b.o
 
-PLUGIN = libplug.so
+PLUGIN-DEPS = libplug.so
+PLUGIN-PRIV = libplug-priv.so
 MERGE = merge
 
-all: $(MERGE)
+all: $(MERGE) $(PLUGIN-DEPS) $(PLUGIN-PRIV)
 
-libtest1.so: $(TEST-OBJ) $(PLUGIN)
-	$(CC) -shared -o $@ $(TEST-OBJ) -Wl,--plugin,./$(PLUGIN),--gc-sections,--version-script,vers-test1
+test: libtest1.so
 
-$(PLUGIN): plug.o
+libtest1.so: $(TEST-OBJ) $(PLUGIN-DEPS)
+	$(CC) -shared -o $@ $(TEST-OBJ) -Wl,--plugin,./$(PLUGIN-DEPS),--gc-sections,--version-script,vers-test1
+
+$(PLUGIN-DEPS): plug.o
+	$(CC) -shared -o $@ $^ -Wl,--version-script,vers
+
+$(PLUGIN-PRIV): plug-priv.o
 	$(CC) -shared -o $@ $^ -Wl,--version-script,vers

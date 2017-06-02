@@ -90,7 +90,7 @@ htab_expand(struct htab *htab)
 {
 	struct htab oldht = *htab;
 	htab->used = oldht.used;
-	htab->size = oldht.size ? 2 * oldht.size : 1;
+	htab->size = oldht.size ? 2 * oldht.size : 2;
 	htab->hashes = calloc(htab->size, sizeof *htab->hashes);
 	htab->elts = calloc(htab->size, sizeof *htab->elts);
 	for (size_t i = 0; i < oldht.size; i++)
@@ -164,7 +164,7 @@ input(struct dso *dso, FILE *f)
 		fscanf(f, "%d %lld %ms", &o->nscn, &o->offset, &o->path);
 		o->scns = s;
 		for (; s < o->scns + o->nscn; s++) {
-			fscanf(f, "%d %lld %ms", &s->used, &s->size, &s->name);
+			fscanf(f, "%d %lld %ms %*[^\n]", &s->used, &s->size, &s->name);
 			fscanf(f, "%d", &s->nscndeps);
 			if (!s->nscndeps) continue;
 			s->scndeps = malloc(s->nscndeps * sizeof *s->scndeps);
@@ -338,10 +338,27 @@ static void mark(struct dso *dsos, int n)
 		for (struct scn *s = dso->scn; s < dso->scn + dso->nscn; s++)
 			if (s->used)
 				dfs(&s->n);
+	int nloc = 0, nhid = 0;
+	struct sym *locstack = 0, *hidstack = 0;
 	for (struct dso *dso = dsos; dso < dsos + n; dso++)
-		for (struct sym *y = dso->sym; y < dso->sym + dso->nsym; y++)
-			if (y->weak != 'U' && !y->n.preorderidx)
-				printf("%s\n", y->name);
+		for (struct sym *y = dso->sym; y < dso->sym + dso->nsym; y++) {
+			if (y->weak == 'U') continue;
+			if (!y->n.preorderidx) {
+				nloc++;
+				y->n.stacknext = &locstack->n; locstack = y;
+			} else if (y->vis != 'h') {
+				struct sym *u = sym_htab_lookup_only(y->name);
+				if (!u || !u->n.preorderidx) {
+					nhid++;
+					y->n.stacknext = &hidstack->n; hidstack = y;
+				}
+			}
+		}
+	printf("%d %d\n", nloc, nhid);
+	for (; nloc; nloc--, locstack = (void *)locstack->n.stacknext)
+		printf("%s\n", locstack->name);
+	for (; nhid; nhid--, hidstack = (void *)hidstack->n.stacknext)
+		printf("%s\n", hidstack->name);
 }
 
 int main(int argc, char *argv[])
