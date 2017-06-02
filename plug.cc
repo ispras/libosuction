@@ -52,6 +52,160 @@ parse_gimple_stmt (struct cgraph_node *node, gimple* stmt, struct signature *sig
 void dump_dynamic_symbol_calls (function* func, call_symbols *symbols);
 void dump_node (cgraph_node *node);
 
+static bool
+compare_ref (tree *t1, tree *t2)
+{
+  tree *p1 = t1, *p2 = t2;
+  while (TREE_CODE (*p1) != VAR_DECL && TREE_CODE (*p2) != VAR_DECL)
+    {
+       if (TREE_CODE (*p1) != TREE_CODE (*p2)
+	   || TREE_CODE (*p1) == VAR_DECL
+	   || TREE_CODE (*p2) == VAR_DECL)
+	 return false;
+
+       switch (TREE_CODE (*p1))
+	 {
+	    case ARRAY_REF:
+	      /* Just skip it, we do not care about indeces */
+	      break;
+
+	    case COMPONENT_REF:
+	      if (TREE_OPERAND (*p1, 1) != TREE_OPERAND (*p2, 1))
+		return false;
+	      break;
+
+	    default:
+	      return false;
+	 }
+
+       p1 = &TREE_OPERAND (*p1, 0);
+       p2 = &TREE_OPERAND (*p2, 0);
+    }
+  return *p1 == *p2;
+}
+
+static void
+unwind_expression_to_stack (tree *expr_p, auto_vec<tree, 10> *stack)
+{
+  tree *p;
+  location_t loc = EXPR_LOCATION (*expr_p);
+  for (p = expr_p; ; p = &TREE_OPERAND (*p, 0))
+    {
+      /* Fold INDIRECT_REFs now to turn them into ARRAY_REFs.  */
+      if (TREE_CODE (*p) == INDIRECT_REF)
+	*p = fold_indirect_ref_loc (loc, *p);
+
+      if (TREE_CODE (*p) == ARRAY_REF || TREE_CODE (*p) == COMPONENT_REF)
+	stack->safe_push (*p);
+      else
+	break;
+    }
+}
+
+static bool
+collect_values (struct cgraph_node *node, tree *expr, struct signature *sign)
+{
+  bool assign = false;
+  basic_block bb;
+  gimple *stmt;
+
+  FOR_EACH_BB_FN (bb, node->get_fun ())
+    {
+      gimple_stmt_iterator si;
+      for (si = gsi_start_bb (bb); !gsi_end_p (si); gsi_next (&si))
+	{
+	  stmt = gsi_stmt (si);
+	  /* If it is a single assignment, analyze rhs */
+	  if (is_gimple_assign (stmt)
+	      && (gimple_assign_single_p (stmt)
+		  || gimple_assign_unary_nop_p (stmt)))
+	    {
+	      tree rhs = gimple_assign_rhs1 (stmt);
+	      tree lhs = gimple_assign_lhs (stmt);
+
+	      if (compare_ref (expr, &lhs))
+		{
+		  assign = true;
+		  if (!parse_symbol (node, stmt, rhs, sign))
+		    return false;
+		}
+	      else if (TREE_CODE (lhs) == MEM_REF)
+		{
+		  tree base = TREE_OPERAND (lhs, 0), t;
+		  if (TREE_CODE (base) != ADDR_EXPR)
+		    continue;
+		  base = TREE_OPERAND (base, 0);
+		  switch (TREE_CODE (base))
+		    {
+		    case ARRAY_REF:
+		      t = get_base_address (*expr);
+		      if (compare_ref (&lhs, &t))
+			{
+			  assign = true;
+			  if (!parse_symbol (node, stmt, rhs, sign))
+			    return false;
+			}
+		    case COMPONENT_REF:
+		    default:
+		      break;
+		    }
+		}
+	    }
+	}
+    }
+  return assign;
+}
+
+static bool
+contains_ref_expr (struct cgraph_node *node, tree *expr)
+{
+  basic_block bb;
+  unsigned j;
+  gimple *stmt;
+  tree base = get_base_address(*expr), *op, op_base;
+
+  // TODO use dominators and stmt seq for more precise prediction.
+  FOR_EACH_BB_FN (bb, node->get_fun ())
+    {
+      gimple_stmt_iterator si;
+      for (si = gsi_start_bb (bb); !gsi_end_p (si); gsi_next (&si))
+	{
+	  stmt = gsi_stmt (si);
+	  switch (gimple_code (stmt))
+	    {
+	    case GIMPLE_CALL:
+	      /* Check there is no address getting among arguments */
+	      for (j = 0; j < gimple_call_num_args (stmt); ++j)
+		{
+		  tree arg = gimple_call_arg (stmt, j);
+		  if (TREE_CODE (arg) == ADDR_EXPR
+		      && base == get_base_address (arg))
+		    return true;
+		}
+	      break;
+
+	    case GIMPLE_ASSIGN:
+	      /* Check there is no address getting among operands */
+	      for (j = 0; j < gimple_num_ops (stmt); ++j)
+		{
+		  op = gimple_op_ptr (stmt, j);
+		  op_base = get_base_address (*op);
+		  if (TREE_CODE (*op) == ADDR_EXPR && base == op_base)
+		    return true;
+		  if (TREE_CODE (*op) == MEM_REF
+		      && TREE_CODE (TREE_OPERAND (*op, 0)) == ADDR_EXPR
+		      && TREE_OPERAND (TREE_OPERAND (*op, 0), 0) == op_base)
+		    return true;
+		}
+	      break;
+
+	    default:
+	      continue;
+	    }
+	}
+    }
+  return false;
+}
 
 static bool
 parse_ref_1 (struct cgraph_node *node, gimple *stmt, struct signature *sign, 
@@ -109,46 +263,20 @@ static bool
 parse_ref (struct cgraph_node *node, gimple *stmt, 
 	   tree *expr_p, struct signature *sign)
 {
-  tree *p, base, ctor;
+  tree base, ctor, t;
   auto_vec<tree, 10> expr_stack;
-  location_t loc = EXPR_LOCATION (*expr_p);
-  for (p = expr_p; ; p = &TREE_OPERAND (*p, 0))
-    {
-      /* Fold INDIRECT_REFs now to turn them into ARRAY_REFs.  */
-      if (TREE_CODE (*p) == INDIRECT_REF)
-	*p = fold_indirect_ref_loc (loc, *p);
 
-      if (TREE_CODE (*p) == ARRAY_REF || TREE_CODE (*p) == COMPONENT_REF) 
-	expr_stack.safe_push (*p);
-      else
-	break;
-    }
-  tree t = expr_stack[expr_stack.length () - 1];
+  unwind_expression_to_stack (expr_p, &expr_stack);
+  t = expr_stack[expr_stack.length () - 1];
   base = TREE_OPERAND (t, 0);
   ctor = ctor_for_folding (base);
   /* Cannot find a constructor of the decl */
   if (ctor == NULL || ctor == error_mark_node)
     {
-      basic_block bb;
-      FOR_EACH_BB_FN (bb, node->get_fun ())
-	{
-	  gimple_stmt_iterator i;
-	  for (i = gsi_start_bb (bb); !gsi_end_p (i); gsi_next (&i))
-	    {
-	      gimple* stmt2 = gsi_stmt (i);
-	      if (!gimple_assign_single_p (stmt2)
-		  && !gimple_assign_unary_nop_p (stmt2))
-		continue;
+      if (contains_ref_expr (node, expr_p))
+	return false;
 
-	      tree lhs = gimple_assign_lhs (stmt2);
-	      tree rhs = gimple_assign_rhs1 (stmt2);
-	      if (TREE_CODE (lhs) == TREE_CODE (t)
-		  && TREE_OPERAND (lhs, 0) == base)
-		if (!parse_symbol (node, stmt2, rhs, sign))
-		  return false;
-	    }
-	}
-      return true;
+      return collect_values (node, expr_p, sign);
     }
   return parse_ref_1 (node, stmt, sign, ctor, &expr_stack, expr_stack.length () - 1);
 }
@@ -246,10 +374,10 @@ parse_symbol (struct cgraph_node *node, gimple *stmt,
 	  int i;
 	  bool res = true;
 
-	  // TODO check the current function
 	  if (sym_node->ctor_useable_for_folding_p ())
 	    return parse_symbol (node, stmt, ctor_for_folding (symbol), sign);
 
+	  // TODO check the current function
 	  for (i = 0; sym_node->iterate_referring (i, ref); i++)
 	    if (ref->stmt != stmt)
 	      res &= parse_gimple_stmt (node, ref->stmt, sign);
@@ -303,7 +431,6 @@ parse_gimple_stmt (struct cgraph_node *node, gimple* stmt, struct signature *sig
       result = false;
       break;
     }
-  // TODO handle simple expressions (global_const.c)
   return result;
 }
 
