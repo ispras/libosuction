@@ -42,7 +42,7 @@ struct call_info
 typedef hash_map<const char*, hash_set<const char*, nofree_string_hash>*> call_symbols;
 
 static vec<struct signature> signatures;
-static hash_set<const char*> considered_functions;
+static hash_set<const char*, nofree_string_hash> considered_functions;
 static call_symbols dynamic_symbols;
 
 static bool
@@ -53,13 +53,35 @@ void dump_dynamic_symbol_calls (function* func, call_symbols *symbols);
 void dump_node (cgraph_node *node);
 
 static bool
+is_considered_call (gimple *stmt)
+{
+  tree decl;
+  tree t = gimple_call_fndecl (stmt);
+  if (t && DECL_P (t))
+    {
+      decl = DECL_NAME (gimple_call_fndecl (stmt));
+      if (considered_functions.contains (IDENTIFIER_POINTER (decl)))
+	return true;
+    }
+  return false;
+}
+
+static bool
 is_read_only (struct varpool_node *node)
 {
   unsigned i;
   ipa_ref *ref = NULL;
   for (i = 0; node->iterate_referring (i, ref); i++)
-    if (ref->use != IPA_REF_LOAD)
-      return false;
+    {
+      /* Skip already considered functions */
+      if (ref->use == IPA_REF_ADDR
+	  && gimple_code (ref->stmt) == GIMPLE_CALL
+	  && is_considered_call (ref->stmt))
+	continue;
+
+      if (ref->use != IPA_REF_LOAD)
+	return false;
+    }
   return true;
 }
 
@@ -146,13 +168,14 @@ collect_values (struct cgraph_node *node, tree *expr, struct signature *sign)
   return assign;
 }
 
+
 static bool
-contains_ref_expr (struct cgraph_node *node, tree *expr)
+contains_ref_expr (struct cgraph_node *node,  tree *expr)
 {
   basic_block bb;
   unsigned j;
   gimple *stmt;
-  tree base = get_base_address(*expr), *op, op_base;
+  tree base = get_base_address(*expr), *op;
 
   // TODO use dominators and stmt seq for more precise prediction.
   FOR_EACH_BB_FN (bb, node->get_fun ())
@@ -164,12 +187,16 @@ contains_ref_expr (struct cgraph_node *node, tree *expr)
 	  switch (gimple_code (stmt))
 	    {
 	    case GIMPLE_CALL:
+	      /* Do not assume already checked calls */
+	      if (is_considered_call (stmt))
+		  continue;
+
 	      /* Check there is no address getting among arguments */
 	      for (j = 0; j < gimple_call_num_args (stmt); ++j)
 		{
 		  tree arg = gimple_call_arg (stmt, j);
 		  if (TREE_CODE (arg) == ADDR_EXPR
-		      && base == get_base_address (arg))
+		      && base == get_base_address (TREE_OPERAND(arg, 0)))
 		    return true;
 		}
 	      break;
@@ -179,12 +206,12 @@ contains_ref_expr (struct cgraph_node *node, tree *expr)
 	      for (j = 0; j < gimple_num_ops (stmt); ++j)
 		{
 		  op = gimple_op_ptr (stmt, j);
-		  op_base = get_base_address (*op);
-		  if (TREE_CODE (*op) == ADDR_EXPR && base == op_base)
+		  if (TREE_CODE (*op) == ADDR_EXPR
+		      && base == get_base_address (TREE_OPERAND(*op, 0)))
 		    return true;
 		  if (TREE_CODE (*op) == MEM_REF
 		      && TREE_CODE (TREE_OPERAND (*op, 0)) == ADDR_EXPR
-		      && TREE_OPERAND (TREE_OPERAND (*op, 0), 0) == op_base)
+		      && TREE_OPERAND (TREE_OPERAND (*op, 0), 0) == base)
 		    return true;
 		}
 	      break;
@@ -259,10 +286,23 @@ parse_ref (struct cgraph_node *node, gimple *stmt,
   unwind_expression_to_stack (expr_p, &expr_stack);
   t = expr_stack[expr_stack.length () - 1];
   base = TREE_OPERAND (t, 0);
+
+  /* Do not parse if cannot reach base's decl */
+  if (!DECL_P (base))
+    return false;
+
   ctor = ctor_for_folding (base);
   /* Cannot find a constructor of the decl */
   if (ctor == NULL || ctor == error_mark_node)
     {
+      /* Global var */
+      if (TREE_STATIC (base) || DECL_EXTERNAL (base) || in_lto_p)
+	{
+	  if (is_read_only (varpool_node::get(base)) && DECL_INITIAL (base))
+	    return parse_ref_1 (node, stmt, sign, DECL_INITIAL (base),
+				&expr_stack, expr_stack.length () - 1);
+	}
+
       if (contains_ref_expr (node, expr_p))
 	return false;
 
@@ -310,7 +350,6 @@ parse_default_def (struct cgraph_node *node, tree default_def, struct signature 
 		   subsymname);
 	  print_gimple_stmt (dump_file, cs->call_stmt, 0, 0);
 	}
-      // TODO indirect calls
       considered_functions.add (caller_name);
       symbol = gimple_call_arg (cs->call_stmt, arg_num);
       result &= parse_symbol (cs->caller, cs->call_stmt, symbol, &subsign);
@@ -407,7 +446,7 @@ parse_gimple_stmt (struct cgraph_node *node, gimple* stmt, struct signature *sig
 
     case GIMPLE_PHI:
       /*TODO phi cycles, currently unavalable because of absence of 
-	string changing track */
+	string changes handling */
       if (dump_file)
 	fprintf (dump_file, "\tPHI statement def: iterate each of them\n");
       for (i = 0; i < gimple_phi_num_args (stmt); i++)
@@ -447,7 +486,9 @@ process_calls (struct cgraph_node *node)
 	    fprintf (dump_file, "\t%s matched to the signature\n", 
 		     cs->callee->asm_name ());
 
+	  considered_functions.add (signatures[i].func_name);
 	  is_limited = parse_gimple_stmt (node, cs->call_stmt, &signatures[i]);
+	  considered_functions.remove (signatures[i].func_name);
 
 	  if (dump_file && !is_limited) 
 	    fprintf (dump_file, "\t%s set is not limited\n", 
