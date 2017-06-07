@@ -4,6 +4,7 @@ CXX="$GCCDIR/x86_64-pc-linux-gnu-g++"
 CC="$GCCDIR/x86_64-pc-linux-gnu-gcc"
 CXXFLAGS+="-O0 -ggdb3 -fno-exceptions -fno-rtti -std=c++11 -fpic -Wall"
 PLUGIN=../libplug.so 
+PLUGIN_ARG="-fplugin-arg-libplug-sign-dlsym=1"
 
 
 function dump_contains() {
@@ -15,7 +16,7 @@ function simple_test() {
   local str="$2"
   local expected="$3"
   echo "TESTING $file ($4)"
-  $CC -O2 -fplugin=$PLUGIN $file -ldl -fdump-ipa-all
+  $CC -O2 -fplugin=$PLUGIN $PLUGIN_ARG $file -ldl -fdump-ipa-all
   local actual=$(dump_contains $file.312i.dlsym "$str")
   if [ $expected -eq $actual ]
   then
@@ -31,7 +32,7 @@ function simple_test_cpp() {
   local str="$2"
   local expected="$3"
   echo "TESTING $file ($4)"
-  $CXX -O2 -fplugin=$PLUGIN $file -ldl -fdump-ipa-all
+  $CXX -O2 -fplugin=$PLUGIN $PLUGIN_ARG $file -ldl -fdump-ipa-all
   local actual=$(dump_contains $file.312i.dlsym "$str")
   if [ $expected -eq $actual ]
   then

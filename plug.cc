@@ -26,7 +26,7 @@ int plugin_is_GPL_compatible;
 struct signature
 {
   const char* func_name;
-  size_t sym_pos;
+  int sym_pos;
 };
 
 /* TODO add considered_functions and change the parse_call signature
@@ -46,11 +46,14 @@ static hash_set<const char*, nofree_string_hash> considered_functions;
 static call_symbols dynamic_symbols;
 
 static bool
-parse_symbol (struct cgraph_node *node, gimple *stmt, tree symbol, struct signature *sign);
+parse_symbol (struct cgraph_node *node, gimple *stmt,
+	      tree symbol, struct signature *sign);
 static bool
 parse_gimple_stmt (struct cgraph_node *node, gimple* stmt, struct signature *sign);
-void dump_dynamic_symbol_calls (function* func, call_symbols *symbols);
-void dump_node (cgraph_node *node);
+void
+dump_dynamic_symbol_calls (function* func, call_symbols *symbols);
+void
+dump_node (cgraph_node *node);
 
 static bool
 is_considered_call (gimple *stmt)
@@ -234,7 +237,7 @@ parse_ref_1 (struct cgraph_node *node, gimple *stmt, struct signature *sign,
   /* At the bottom of the stack, string values should be */
   if (depth == 0)
     {
-      switch (TREE_CODE(t)) 
+      switch (TREE_CODE (t))
 	{
 	case ARRAY_REF:
 	  FOR_EACH_CONSTRUCTOR_ELT (CONSTRUCTOR_ELTS (ctor), cnt, cfield, cval)
@@ -255,7 +258,7 @@ parse_ref_1 (struct cgraph_node *node, gimple *stmt, struct signature *sign,
       return true;
     }
   /* Dive into constructor */
-  switch (TREE_CODE(t)) 
+  switch (TREE_CODE (t))
     {
     case ARRAY_REF:
       FOR_EACH_CONSTRUCTOR_ELT (CONSTRUCTOR_ELTS (ctor), cnt, cfield, cval)
@@ -318,7 +321,7 @@ static bool
 parse_default_def (struct cgraph_node *node, tree default_def, struct signature *sign)
 {
   bool result = true;
-  unsigned HOST_WIDE_INT arg_num;
+  int arg_num;
   tree t, symbol, sym_decl = SSA_NAME_IDENTIFIER (default_def);
   struct cgraph_edge *cs;
   const char *caller_name, *subsymname = IDENTIFIER_POINTER (sym_decl);
@@ -418,6 +421,10 @@ parse_symbol (struct cgraph_node *node, gimple *stmt,
 	    }
 	  return false;
 	}
+
+    case INTEGER_CST:
+      /* Allow null reference, permit another */
+      return ! tree_to_shwi (symbol);
 
     default:
       return false;
@@ -555,8 +562,6 @@ public:
   pass_dlsym(gcc::context *ctxt)
     : simple_ipa_opt_pass (pass_dlsym_data, ctxt)
     {
-      struct signature initial = { .func_name = "dlsym",  .sym_pos = 1 };
-      signatures.safe_push (initial);
     }
 
   virtual unsigned int execute(function *) { return resolve_dlsym_calls (); }
@@ -564,11 +569,36 @@ public:
 
 } // anon namespace
 
+void static
+parse_argument (plugin_argument *arg)
+{
+  const char *arg_key = arg->key;
+  const char *arg_value = arg->value;
+  if (arg_key[0] == 's' && arg_key[1] == 'i'
+      && arg_key[2] == 'g' && arg_key[3] == 'n'
+      && arg_key[4] == '-')
+    {
+      struct signature initial = { .func_name = &arg_key[5],
+				   .sym_pos = atoi (arg_value) };
+      signatures.safe_push (initial);
+    }
+}
+
+void static
+parse_arguments (int argc, plugin_argument *argv)
+{
+  int i;
+  for (i = 0; i < argc; ++ i)
+    parse_argument (&argv[i]);
+}
+
 int
 plugin_init (plugin_name_args *plugin_info, plugin_gcc_version *version)
 {
   if (!plugin_default_version_check (&gcc_version ,version))
     return 1; 
+
+  parse_arguments (plugin_info->argc, plugin_info->argv);
 
   struct register_pass_info pass_info;
   pass_info.pass = new pass_dlsym (g);
