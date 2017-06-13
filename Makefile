@@ -1,5 +1,5 @@
 CFLAGS += -fpic
-CFLAGS += -ffunction-sections
+CFLAGS += -ffunction-sections -fdata-sections
 CFLAGS += -Wall -Wno-parentheses
 CFLAGS += -g
 
