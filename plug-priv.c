@@ -112,6 +112,12 @@ filedup(int fd, off_t offset, off_t filesize)
 	return tmpfd;
 }
 static void *
+memdup(const void *p, size_t l)
+{
+	void *r = malloc(l);
+	return r ? memcpy(r, p, l) : r;
+}
+static void *
 addrshift(void *addr, unsigned char *cloneview, const unsigned char *view)
 {
 	return cloneview + ((const unsigned char *)addr - view);
@@ -163,6 +169,7 @@ process_elf(int fd, off_t offset, off_t filesize, const unsigned char *view,
 		Shdr *strtab = shdrs + shdr->sh_link;
 		Sym *syms = (void *)(view + shdr->sh_offset);
 		char *strings = (void *)(view + strtab->sh_offset);
+		strings = memdup(strings, strtab->sh_size);
 		size_t nsyms = shdr->sh_size / sizeof (Sym);
 		*plugsyms = calloc(nsyms, sizeof **plugsyms);
 		for (size_t j = 0; j < nsyms; j++) {
@@ -173,7 +180,7 @@ process_elf(int fd, off_t offset, off_t filesize, const unsigned char *view,
 			int vis = ELF_ST_VISIBILITY(sym->st_other);
 			char *name = strings + sym->st_name;
 			struct sym *s = sym_htab_lookup_only(name);
-			if (bind != STB_LOCAL) {
+			if (bind != STB_LOCAL /*&& !strchr(name, '@')*/) {
 				struct ld_plugin_symbol *plugsym = *plugsyms + nplugsyms[0]++;
 				plugsym->name = name;
 				plugsym->def = ldplug_weak(bind, shndx);
