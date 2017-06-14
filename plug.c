@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
+#include <unistd.h>
 
 #include <elf.h>
 
@@ -16,8 +17,10 @@ _Static_assert(LD_PLUGIN_API_VERSION == 1, "unexpected plugin API version");
 #define ELF_ST_VISIBILITY(st_other) ELF64_ST_VISIBILITY(st_other)
 #define ELF_R_SYM(r_info)           ELF64_R_SYM(r_info)
 
+static int sockfd;
 static struct {
 	const char *output_name;
+	const char *entrypoint;
 	int is_dso;
 	int nobj;
 	int next_scn_uid;
@@ -132,10 +135,12 @@ sym_htab_lookup_only(const char *name)
 }
 
 static void
-dg_begin(const char *filename, int is_dso)
+dg_begin(const char *filename, int is_dso, int sockfd_, const char *entry)
 {
 	dg_info.output_name = strdup(filename);
+	dg_info.entrypoint = *entry ? strdup(entry) : "_start";
 	dg_info.is_dso = is_dso;
+	sockfd = sockfd_;
 }
 static void
 dg_print_obj(FILE *f, const struct objfile *o, int subgraph)
@@ -192,26 +197,27 @@ static void
 dg_print(FILE *f)
 {
 	int nobj = dg_info.nobj, nscn = dg_info.next_scn_uid;
-	printf("%c %d %d\n", "ED"[dg_info.is_dso], nobj, nscn);
+	fprintf(f, "%c %d %d %s %s\n", "REDP"[dg_info.is_dso], nobj, nscn,
+		dg_info.output_name, dg_info.entrypoint);
 	int *scndeps = calloc(nscn, sizeof *scndeps);
 	for (struct objfile *o = dg_info.obj_list; o; o = o->next) {
-		printf("%d\t%lld\t%s\n", o->uids, (long long)o->offset, o->name);
+		fprintf(f, "%d\t%lld\t%s\n", o->uids, (long long)o->offset, o->name);
 		for (struct section *s = o->sections;
 		     s < o->sections + o->num_sections; s++)
 			if (s->name) {
-				printf("\t%d\t%zd\t%s\t%d\n", s->used, s->size, s->name, s->uid);
+				fprintf(f, "\t%d\t%zd\t%s\t%d\n", s->used, s->size, s->name, s->uid);
 				int ndeps = 0;
 				for (struct rel *r = s->rels;
 				     r < s->rels + s->nrels; r++)
 					if (r->sym && r->sym->section)
 						ndeps += !scndeps[r->sym->section->uid]++;
-				printf("\t\t%d ", ndeps);
+				fprintf(f, "\t\t%d ", ndeps);
 				for (struct rel *r = s->rels;
 				     r < s->rels + s->nrels; r++)
 					if (r->sym && r->sym->section)
 						if (!--scndeps[r->sym->section->uid])
-							printf("%d ", r->sym->section->uid);
-				printf("\n");
+							fprintf(f, "%d ", r->sym->section->uid);
+				fprintf(f, "\n");
 			}
 	}
 	free(scndeps);
@@ -219,55 +225,34 @@ dg_print(FILE *f)
 	for (struct objfile *o = dg_info.obj_list; o; o = o->next)
 		for (struct sym *s = o->syms; s < o->syms + o->nsyms; s++)
 			nsym += !!s->name;
-	printf("%d\n", nsym);
+	fprintf(f, "%d\n", nsym);
 	for (struct objfile *o = dg_info.obj_list; o; o = o->next)
 		for (struct sym *s = o->syms; s < o->syms + o->nsyms; s++) {
 			if (!s->name)
 				continue;
-			printf("%c%c %d\t%s\n",
+			fprintf(f, "%c%c %d\t%s\n",
 			       "DCWU"[s->weak], "dph"[s->vis],
 			       s->section ? s->section->uid : -1, s->name);
 			int ndeps = 0;
 			for (struct rel *r = s->firstrel; r; r = r->nextrel)
 				ndeps++;
-			printf("\t%d ", ndeps);
+			fprintf(f, "\t%d ", ndeps);
 			for (struct rel *r = s->firstrel; r; r = r->nextrel)
-				printf("%d ", r->section->uid);
-			printf("\n");
+				fprintf(f, "%d ", r->section->uid);
+			fprintf(f, "\n");
 		}
-}
-static void
-dg_mark_used(struct section *s)
-{
-	s->used = 2;
-	for (struct rel *r = s->rels; r < s->rels + s->nrels; r++)
-		if (r->sym && r->sym->section && r->sym->section->used != 2)
-			dg_mark_used(r->sym->section);
 }
 static void
 dg_end(void)
 {
-	struct sym *s = sym_htab_lookup_only("_start");
-	if (s && s->section)
-		s->section->used = 1;
-#if 0
-	if (dg_info.is_dso)
-		for (struct objfile *o = dg_info.obj_list; o; o = o->next)
-			for (s = o->syms; s < o->syms + o->nsyms; s++)
-				if (s->name && s->section && s->vis != V_HIDDEN)
-					s->section->used = 1;
-	for (struct objfile *o = dg_info.obj_list; o; o = o->next)
-		for (struct section *s = o->sections;
-		     s < o->sections + o->num_sections; s++)
-			if (s->used == 1)
-				dg_mark_used(s);
-#endif
 	struct objfile *prev = 0;
 	for (struct objfile *o = dg_info.obj_list, *n; o; o = n)
 		n = o->next, o->next = prev, prev = o;
 	dg_info.obj_list = prev;
 	//dg_print_all_graphviz(stdout);
-	dg_print(stdout);
+	FILE *f = fdopen(sockfd, "w");
+	dg_print(f);
+	fclose(f);
 }
 static void
 dg_object_start(const char *filename, off_t offset, int num_sections)
@@ -499,18 +484,31 @@ error(const char *fmt, ...)
 }
 
 static enum ld_plugin_status
+compat_get_view(const struct ld_plugin_input_file *file, const void **viewp)
+{
+	if (get_view)
+		return get_view(file->handle, viewp);
+	void *view = malloc(file->filesize);
+	if (!view) return LDPS_ERR;
+	*viewp = view;
+	off_t sz = file->filesize;
+	return pread(file->fd, view, sz, file->offset) != sz ? LDPS_ERR : 0;
+}
+
+static enum ld_plugin_status
 claim_file_handler(const struct ld_plugin_input_file *file, int *claimed)
 {
 	*claimed = 0;
 	const char *filename = file->name;
 	const void *view;
 	enum ld_plugin_status status;
-	if ((status = get_view(file->handle, &view)))
+	if ((status = compat_get_view(file, &view)))
 		return error("%s: get_view: %d", filename, status);
 
 	const char *errmsg = process_elf(filename, file->offset, view);
 	if (errmsg)
 		return error("%s: %s", filename, errmsg);
+	if (!get_view) free((void *)view);
 	return 0;
 }
 
@@ -540,9 +538,13 @@ onload(struct ld_plugin_tv *tv)
 	u[LDPT_REGISTER_ALL_SYMBOLS_READ_HOOK].tv_register_all_symbols_read
 	    (all_symbols_read_handler);
 
+	const char *optstr = u[LDPT_OPTION].tv_string, *entry;
+	if (!optstr || !(entry = strchr(optstr, ':')))
+		return error("plugin options missing");
+	int sockfd = atoi(optstr);
+
 	int output = u[LDPT_LINKER_OUTPUT].tv_val;
-	if (output != LDPO_REL)
-		dg_begin(u[LDPT_OUTPUT_NAME].tv_string, output == LDPO_DYN);
+	dg_begin(u[LDPT_OUTPUT_NAME].tv_string, output, sockfd, entry+1);
 	return 0;
 }
 _Static_assert(sizeof((ld_plugin_onload){onload}) != 0, "");
