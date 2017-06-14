@@ -8,8 +8,10 @@ TEST-OBJ =  test1a.o test1b.o
 PLUGIN-DEPS = libplug.so
 PLUGIN-PRIV = libplug-priv.so
 MERGE = merge
+DAEMON = daemon
+WRAPPER = wrapper
 
-all: $(MERGE) $(PLUGIN-DEPS) $(PLUGIN-PRIV)
+all: $(DAEMON) $(WRAPPER) $(MERGE) $(PLUGIN-DEPS) $(PLUGIN-PRIV)
 
 test: libtest1.so
 
@@ -21,3 +23,5 @@ $(PLUGIN-DEPS): plug.o
 
 $(PLUGIN-PRIV): plug-priv.o
 	$(CC) -shared -o $@ $^ -Wl,--version-script,vers
+
+daemon: CFLAGS += -fopenmp
