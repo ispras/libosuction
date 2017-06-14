@@ -22,7 +22,6 @@
 int plugin_is_GPL_compatible;
 
 // TODO warning &dlsym &func->dlsym
-// TODO overriden functions (same names, different sym_pos)
 struct signature
 {
   const char* func_name;
@@ -340,7 +339,7 @@ parse_default_def (struct cgraph_node *node, tree default_def, struct signature 
   for (cs = node->callers; cs; cs = cs->next_caller)
     {
       struct signature subsign = {sign->func_name, arg_num};
-      caller_name = IDENTIFIER_POINTER (DECL_NAME (cs->caller->get_fun ()->decl));
+      caller_name = cs->caller->asm_name ();
 
       /* FIXME recursive cycle is skipped until string are not handled,
 	 otherwise it is incoorect */
@@ -493,9 +492,9 @@ process_calls (struct cgraph_node *node)
 	    fprintf (dump_file, "\t%s matched to the signature\n", 
 		     cs->callee->asm_name ());
 
-	  considered_functions.add (signatures[i].func_name);
+	  considered_functions.add (cs->callee->asm_name ());
 	  is_limited = parse_gimple_stmt (node, cs->call_stmt, &signatures[i]);
-	  considered_functions.remove (signatures[i].func_name);
+	  considered_functions.remove (cs->callee->asm_name ());
 
 	  if (dump_file && !is_limited) 
 	    fprintf (dump_file, "\t%s set is not limited\n", 
