@@ -13,9 +13,12 @@ struct node {
 	struct node *stacknext;
 	struct node *sccroot;
 	int sccsize;
+	int weight;
 };
 
 struct dso {
+	const char *name;
+	const char *entrypoint;
 	int is_dso;
 	int nobj;
 	int nscn;
@@ -44,7 +47,7 @@ struct dso {
 		const char *name;
 		struct node *defscn;
 		struct scn **revdeps;
-	} *sym;
+	} *sym, *entrysym;
 };
 
 static struct htab {
@@ -156,7 +159,8 @@ static void
 input(struct dso *dso, FILE *f)
 {
 	char is_dso;
-	fscanf(f, " %c %d %d", &is_dso, &dso->nobj, &dso->nscn);
+	fscanf(f, " %c %d %d %ms %ms", &is_dso, &dso->nobj, &dso->nscn,
+	       &dso->name, &dso->entrypoint);
 	dso->is_dso = is_dso == 'D';
 	struct obj *o = dso->obj = calloc(dso->nobj, sizeof *dso->obj);
 	struct scn *s = dso->scn = calloc(dso->nscn, sizeof *dso->scn);
@@ -176,6 +180,7 @@ input(struct dso *dso, FILE *f)
 		}
 	}
 	fscanf(f, "%d", &dso->nsym);
+	dso->entrysym = 0;
 	struct sym *y = dso->sym = calloc(dso->nsym, sizeof *dso->sym);
 	for (; y < dso->sym + dso->nsym; y++) {
 		int t;
@@ -187,14 +192,31 @@ input(struct dso *dso, FILE *f)
 			y->n.out = &y->defscn;
 		}
 		fscanf(f, "%d", &y->nrevdeps);
-		if (!y->nrevdeps) continue;
-		y->revdeps = malloc(y->nrevdeps * sizeof *y->revdeps);
+		y->revdeps = y->nrevdeps ? malloc(y->nrevdeps * sizeof *y->revdeps) : 0;
 		for (int i = 0; i < y->nrevdeps; i++) {
 			int t;
 			fscanf(f, "%d", &t);
 			y->revdeps[i] = dso->scn + t;
 			dso->scn[t].nsymdeps++;
 		}
+		if (!y->n.out
+		    && (!strncmp(y->name, "__start_", 8)
+			|| !strncmp(y->name, "__stop_", 7))) {
+			const char *scnname = y->name + 7 + (y->name[4] == 'a');
+			int ndep = 0;
+			for (s = dso->scn; s < dso->scn + dso->nscn; s++)
+				ndep += !strcmp(s->name, scnname);
+			if (ndep) {
+				y->n.out = malloc(ndep * sizeof *y->n.out);
+				y->n.nout = ndep; ndep = 0;
+				for (s = dso->scn; s < dso->scn + dso->nscn; s++)
+					if (!strcmp(s->name, scnname))
+						y->n.out[ndep++] = &s->n;
+				y->weak = 'D'; y->vis = 'h';
+			}
+		}
+		if (!strcmp(y->name, dso->entrypoint))
+			dso->entrysym = y;
 		if (y->weak != 'U') continue;
 		struct sym **symp = sym_htab_lookup(y->name);
 		if (!*symp) {
@@ -270,9 +292,33 @@ static void scc_1(struct node *n)
 	}
 	stackptr = n->stacknext;
 }
+static void scc_2(struct node *n, int *w, int g)
+{
+	if (n->kind == N_SCN) {
+		struct scn *s = (void *)n;
+		if (0||!strncmp(s->name, ".text", 5)) {
+			//printf("%s:%d\n", s->name, s->size);
+			*w += s->size;
+		}
+	}
+	n->onstack = g;
+	for (int i = 0; i < n->nout; i++) {
+		struct node *o = n->out[i];
+		if (o->onstack != g)
+			scc_2(o, w, g);
+	}
+}
 
 static void scc(struct dso *dso)
 {
+#if 1
+	for (int i = 0; i < dso->nsym; i++) {
+		int w = 0;
+		scc_2(&dso->sym[i].n, &w, i+1);
+		printf("%d %s\n", w, dso->sym[i].name);
+	}
+	return;
+#endif
 	for (int i = 0; i < dso->nscn; i++)
 		if (!dso->scn[i].n.preorderidx)
 			scc_1(&dso->scn[i].n);
@@ -334,10 +380,13 @@ static void dfs(struct node *n)
 }
 static void mark(struct dso *dsos, int n)
 {
-	for (struct dso *dso = dsos; dso < dsos + n; dso++)
+	for (struct dso *dso = dsos; dso < dsos + n; dso++) {
+		if (dso->entrysym)
+			dfs(&dso->entrysym->n);
 		for (struct scn *s = dso->scn; s < dso->scn + dso->nscn; s++)
-			if (s->used)
+			if (s->used && !s->n.preorderidx)
 				dfs(&s->n);
+	}
 	int nloc = 0, nhid = 0;
 	struct sym *locstack = 0, *hidstack = 0;
 	for (struct dso *dso = dsos; dso < dsos + n; dso++)
@@ -357,6 +406,7 @@ static void mark(struct dso *dsos, int n)
 	printf("%d %d\n", nloc, nhid);
 	for (; nloc; nloc--, locstack = (void *)locstack->n.stacknext)
 		printf("%s\n", locstack->name);
+	puts("");
 	for (; nhid; nhid--, hidstack = (void *)hidstack->n.stacknext)
 		printf("%s\n", hidstack->name);
 }
@@ -370,7 +420,7 @@ int main(int argc, char *argv[])
 		input(dsos+i-1, f);
 		fclose(f);
 	}
-	//scc(&dso1);
+	//scc(dsos); return 0;
 	link(dsos, argc-1);
 	mark(dsos, argc-1);
 }
