@@ -42,6 +42,7 @@ private:
   bool no_external_uses_p (symtab_node *node);
   bool lib_private_p (symtab_node *node);
   void read_vis_changes (void);
+  bool localize_comdat (symtab_node *node);
 
   const char *fname; /* File to read visibility modifications info from.  */
   splay_tree static_nodes;
@@ -103,10 +104,43 @@ pass_hide_globally_invisible::read_vis_changes (void)
   fclose (f);
 }
 
+/* Tries to localize the comdat group NODE belongs to, returns TRUE on success.
+   This function resembles localize_node () from ipa-visibility.  */
+bool
+pass_hide_globally_invisible::localize_comdat (symtab_node *node)
+{
+  gcc_assert (node->same_comdat_group);
+
+  symtab_node *next, *cur;
+
+  for (next = node->same_comdat_group;
+       next != node; next = next->same_comdat_group)
+    if (!no_external_uses_p (next))
+      return false;
+
+  cur = node;
+  do
+    {
+      next = cur->same_comdat_group;
+      cur->set_comdat_group (NULL);
+      if (!cur->alias)
+	cur->set_section (NULL);
+      if (!cur->transparent_alias)
+	cur->make_decl_local ();
+      cur = next;
+    }
+  while (cur != node);
+
+  node->dissolve_same_comdat_group_list ();
+
+  return true;
+}
+
 unsigned int
 pass_hide_globally_invisible::execute (function *)
 {
   symtab_node *node;
+  bool comdat_priv_failed_p;
 
   static_nodes = splay_tree_new ((splay_tree_compare_fn) strcmp,
 				 (splay_tree_delete_key_fn) free,
@@ -118,18 +152,25 @@ pass_hide_globally_invisible::execute (function *)
 
   FOR_EACH_SYMBOL (node)
     {
+      comdat_priv_failed_p = false;
+
       if (no_external_uses_p (node))
 	{
 	  gcc_assert (node->decl);
-	  /* For functions this causes cgraph_externally_visible_p to return
-	     FALSE, which leads to localize_node being called from
-	     function_and_variable_visibility (ipa-visibility aka "visibility"
-	     pass).  */
-	  TREE_PUBLIC (node->decl) = 0;
-	  /* Weak static symbols make no sense.  */
-	  DECL_WEAK (node->decl) = 0;
+	  gcc_assert (!node->transparent_alias);
+
+          if (!TREE_PUBLIC (node->decl))
+            continue;
+
+	  /* If all members of a comdat are known to be static, make them local
+	     and dissolve this comdat group.  Otherwise the deal is off, only
+	     adjust the visibility of this node and keep the comdat.  */
+          if (node->same_comdat_group)
+            comdat_priv_failed_p = !localize_comdat (node);
+	  else
+	    node->make_decl_local ();
 	}
-      if (lib_private_p (node))
+      if (lib_private_p (node) || comdat_priv_failed_p)
 	{
 	  gcc_assert (node->decl);
 	  DECL_VISIBILITY (node->decl) = VISIBILITY_HIDDEN;
