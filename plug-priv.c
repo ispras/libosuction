@@ -129,6 +129,7 @@ ldplug_weak(int elfbind, int elfscn)
 		return elfbind == STB_WEAK ? LDPK_WEAKUNDEF : LDPK_UNDEF;
 	else if (elfscn == SHN_COMMON)
 		return LDPK_COMMON;
+	if (elfbind == STB_GNU_UNIQUE) elfbind = STB_WEAK;
 	return elfbind == STB_WEAK ? LDPK_WEAKDEF : LDPK_DEF;
 }
 static int

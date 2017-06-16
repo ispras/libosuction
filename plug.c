@@ -332,6 +332,7 @@ sym_weak(int elfbind, int elfscn)
 {
 	if (!elfscn) return W_UNDEF;
 	if (elfscn == SHN_COMMON) return W_COMMON;
+	if (elfbind == STB_GNU_UNIQUE) elfbind = STB_WEAK;
 	return elfbind == STB_WEAK ? W_WEAK : W_STRONG;
 }
 static const char *
