@@ -156,7 +156,6 @@ pass_hide_globally_invisible::execute (function *)
 
       if (no_external_uses_p (node))
 	{
-	  gcc_assert (node->decl);
 	  gcc_assert (!node->transparent_alias);
 
           if (!TREE_PUBLIC (node->decl))
@@ -170,9 +169,9 @@ pass_hide_globally_invisible::execute (function *)
 	  else
 	    node->make_decl_local ();
 	}
-      if (lib_private_p (node) || comdat_priv_failed_p)
+      if ((lib_private_p (node) || comdat_priv_failed_p)
+	  && !DECL_VISIBILITY_SPECIFIED (node->decl))
 	{
-	  gcc_assert (node->decl);
 	  DECL_VISIBILITY (node->decl) = VISIBILITY_HIDDEN;
 	  DECL_VISIBILITY_SPECIFIED (node->decl) = true;
 	}
