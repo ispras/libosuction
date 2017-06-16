@@ -169,6 +169,8 @@ input(struct dso *dso, FILE *f)
 		o->scns = s;
 		for (; s < o->scns + o->nscn; s++) {
 			fscanf(f, "%d %lld %ms %*[^\n]", &s->used, &s->size, &s->name);
+			/* XXX c++ exceptions hack */
+			s->used |= !strcmp(s->name, ".gcc_except_table");
 			fscanf(f, "%d", &s->nscndeps);
 			if (!s->nscndeps) continue;
 			s->scndeps = malloc(s->nscndeps * sizeof *s->scndeps);
