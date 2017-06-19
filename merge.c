@@ -155,6 +155,15 @@ obj_htab_lookup(const char *path, long long offset)
 			return ptr;
 	}
 }
+static int
+is_implicitly_used_section(const char *name)
+{
+	static const char lsda_scn[] = ".gcc_except_table";
+	size_t lsda_scn_len = sizeof lsda_scn - 1;
+	if (!strncmp(name, lsda_scn, lsda_scn_len))
+		return !name[lsda_scn_len] || name[lsda_scn_len] == '.';
+	return 0;
+}
 static void
 input(struct dso *dso, FILE *f)
 {
@@ -170,7 +179,8 @@ input(struct dso *dso, FILE *f)
 		for (; s < o->scns + o->nscn; s++) {
 			fscanf(f, "%d %lld %ms %*[^\n]", &s->used, &s->size, &s->name);
 			/* XXX c++ exceptions hack */
-			s->used |= !strcmp(s->name, ".gcc_except_table");
+			if (!s->used)
+				s->used = is_implicitly_used_section(s->name);
 			fscanf(f, "%d", &s->nscndeps);
 			if (!s->nscndeps) continue;
 			s->scndeps = malloc(s->nscndeps * sizeof *s->scndeps);
