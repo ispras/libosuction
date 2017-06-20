@@ -1,0 +1,7 @@
+E 1 1 __force_dynamic _start
+1	0	__force_dynamic.o
+	1	0	.text	0
+		0 
+1
+Ud -1	__gxx_personality_v0
+	1 0 
