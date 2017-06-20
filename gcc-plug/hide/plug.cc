@@ -50,7 +50,7 @@ private:
 }; // class pass_hide_globally_invisible
 
 static const char *
-decl_name (symtab_node *node)
+decl_name (const symtab_node *node)
 {
   return IDENTIFIER_POINTER (DECL_ASSEMBLER_NAME (node->decl));
 }
@@ -136,6 +136,15 @@ pass_hide_globally_invisible::localize_comdat (symtab_node *node)
   return true;
 }
 
+/* The compiler segfaults if we change visibility of these functions.  It should
+   be enough to special-case them.  */
+static bool
+dont_hide_p (const symtab_node *node)
+{
+  return (!strcmp (decl_name (node), "__cxa_pure_virtual")
+	  || !strcmp (decl_name (node), "__cxa_deleted_virtual"));
+}
+
 unsigned int
 pass_hide_globally_invisible::execute (function *)
 {
@@ -170,7 +179,7 @@ pass_hide_globally_invisible::execute (function *)
 	    node->make_decl_local ();
 	}
       if ((lib_private_p (node) || comdat_priv_failed_p)
-	  && !DECL_VISIBILITY_SPECIFIED (node->decl))
+	  && !dont_hide_p (node))
 	{
 	  DECL_VISIBILITY (node->decl) = VISIBILITY_HIDDEN;
 	  DECL_VISIBILITY_SPECIFIED (node->decl) = true;
