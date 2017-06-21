@@ -409,6 +409,7 @@ process_elf(const char *filename, off_t offset, const unsigned char *view)
 			dg_section(i)->next = relidx;
 			relidx = i;
 		case SHT_NULL: case SHT_STRTAB: case SHT_NOTE: case SHT_GROUP:
+		case SHT_ARM_EXIDX: case SHT_ARM_ATTRIBUTES:
 			continue;
 		case SHT_HASH: case SHT_DYNAMIC: case SHT_SHLIB:
 		case SHT_DYNSYM:
