@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
+#include <stdint.h>
 #include <unistd.h>
 
 #include <elf.h>
@@ -10,12 +11,29 @@
 #include <plugin-api.h>
 _Static_assert(LD_PLUGIN_API_VERSION == 1, "unexpected plugin API version");
 
+#ifndef PLUG_TARGET_ELFCLASS
+#if UINTPTR_MAX == UINT64_MAX
+#define PLUG_TARGET_ELFCLASS 64
+#elif UINTPTR_MAX == UINT32_MAX
+#define PLUG_TARGET_ELFCLASS 32
+#endif
+#endif
+
+#if PLUG_TARGET_ELFCLASS == 64
 #define ElfNN_(t) Elf64_##t
 #define ELFCLASS ELFCLASS64
-#define ELFDATA ELFDATA2LSB
 #define ELF_ST_BIND(st_info)        ELF64_ST_BIND(st_info)
 #define ELF_ST_VISIBILITY(st_other) ELF64_ST_VISIBILITY(st_other)
 #define ELF_R_SYM(r_info)           ELF64_R_SYM(r_info)
+#elif PLUG_TARGET_ELFCLASS == 32
+#define ElfNN_(t) Elf32_##t
+#define ELFCLASS ELFCLASS32
+#define ELF_ST_BIND(st_info)        ELF32_ST_BIND(st_info)
+#define ELF_ST_VISIBILITY(st_other) ELF32_ST_VISIBILITY(st_other)
+#define ELF_R_SYM(r_info)           ELF32_R_SYM(r_info)
+#endif
+
+#define ELFDATA ELFDATA2LSB
 
 static int sockfd;
 static struct {

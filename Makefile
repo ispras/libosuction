@@ -3,6 +3,8 @@ CFLAGS += -ffunction-sections -fdata-sections
 CFLAGS += -Wall -Wno-parentheses
 CFLAGS += -g
 
+CFLAGS += -D_FILE_OFFSET_BITS=64
+
 TEST-OBJ =  test1a.o test1b.o
 
 PLUGIN-DEPS = libplug.so
