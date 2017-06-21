@@ -1,3 +1,4 @@
+CFLAGS += -std=gnu11
 CFLAGS += -fpic
 CFLAGS += -ffunction-sections -fdata-sections
 CFLAGS += -Wall -Wno-parentheses
