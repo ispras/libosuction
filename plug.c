@@ -391,7 +391,7 @@ process_elf(const char *filename, off_t offset, const unsigned char *view)
 		case SHT_PREINIT_ARRAY:
 			used = 1;
 		case SHT_PROGBITS: case SHT_NOBITS:
-		case SHT_ARM_EXIDX:
+		case SHT_ARM_EXIDX: case SHT_NOTE:
 			dg_section_init(dg_section(i),
 					shstrtab + shdr->sh_name,
 			                shdr->sh_size, used);
@@ -409,7 +409,7 @@ process_elf(const char *filename, off_t offset, const unsigned char *view)
 		case SHT_REL: case SHT_RELA:
 			dg_section(i)->next = relidx;
 			relidx = i;
-		case SHT_NULL: case SHT_STRTAB: case SHT_NOTE: case SHT_GROUP:
+		case SHT_NULL: case SHT_STRTAB: case SHT_GROUP:
 		case SHT_ARM_ATTRIBUTES:
 			continue;
 		case SHT_HASH: case SHT_DYNAMIC: case SHT_SHLIB:
