@@ -21,6 +21,14 @@
 #include "cgraph.h"
 int plugin_is_GPL_compatible;
 
+typedef enum
+{
+  UNDEFINED,
+  DYNAMIC,
+  CONSTANT,
+  PARTIALLY_CONSTANT
+} resolve_lattice_t;
+
 // TODO warning &dlsym &func->dlsym
 struct signature
 {
@@ -44,15 +52,49 @@ static vec<struct signature> signatures;
 static hash_set<const char*, nofree_string_hash> considered_functions;
 static call_symbols dynamic_symbols;
 
-static bool
+static resolve_lattice_t
 parse_symbol (struct cgraph_node *node, gimple *stmt,
 	      tree symbol, struct signature *sign);
-static bool
+static resolve_lattice_t
 parse_gimple_stmt (struct cgraph_node *node, gimple* stmt, struct signature *sign);
 void
 dump_dynamic_symbol_calls (function* func, call_symbols *symbols);
 void
 dump_node (cgraph_node *node);
+void
+dump_lattice_value (FILE *outf, resolve_lattice_t val);
+
+/* Compute the meet operator between VAL1 and VAL2.
+
+   UNDEFINED M UNDEFINED          = UNDEFINED
+   DYNAMIC   M UNDEFINED          = DYNAMIC
+   DYNAMIC   M DYNAMIC            = DYNAMIC
+   CONSTANT  M UNDEFINED          = CONSTANT
+   CONSTANT  M CONSTANT	          = CONSTANT
+   DYNAMIC   M CONSTANT           = PARTIALLY_CONSTANT
+   any	     M PARTIALLY_CONSTANT = PARTIALLY_CONSTANT
+
+*/
+static resolve_lattice_t
+resolve_lattice_meet (resolve_lattice_t val1, resolve_lattice_t val2)
+{
+  if (val1 == PARTIALLY_CONSTANT
+      || val2 == PARTIALLY_CONSTANT
+      || (val1 == DYNAMIC && val2 == CONSTANT)
+      || (val1 == CONSTANT && val2 == DYNAMIC))
+    return PARTIALLY_CONSTANT;
+
+  if (val1 == val2)
+    return val1;
+
+  if (val1 == UNDEFINED)
+    return val2;
+  else if (val2 == UNDEFINED)
+    return val1;
+
+  gcc_unreachable ();
+  return UNDEFINED;
+}
 
 static bool
 is_considered_call (gimple *stmt)
@@ -137,10 +179,10 @@ unwind_expression_to_stack (tree *expr_p, auto_vec<tree, 10> *stack)
     }
 }
 
-static bool
+static resolve_lattice_t
 collect_values (struct cgraph_node *node, tree *expr, struct signature *sign)
 {
-  bool assign = false;
+  resolve_lattice_t result = UNDEFINED;
   basic_block bb;
   gimple *stmt;
 
@@ -160,14 +202,14 @@ collect_values (struct cgraph_node *node, tree *expr, struct signature *sign)
 
 	      if (compare_ref (expr, &lhs) && !TREE_CLOBBER_P (rhs))
 		{
-		  assign = true;
-		  if (!parse_symbol (node, stmt, rhs, sign))
-		    return false;
+		  resolve_lattice_t p_res = parse_symbol (node, stmt, rhs, sign);
+		  result = resolve_lattice_meet (result, p_res);
 		}
 	    }
 	}
     }
-  return assign;
+
+  return result;
 }
 
 
@@ -226,13 +268,14 @@ contains_ref_expr (struct cgraph_node *node,  tree *expr)
   return false;
 }
 
-static bool
+static resolve_lattice_t
 parse_ref_1 (struct cgraph_node *node, gimple *stmt, struct signature *sign, 
 	     tree ctor, auto_vec<tree, 10> *stack, unsigned HOST_WIDE_INT depth)
 {
   unsigned HOST_WIDE_INT cnt;
   tree cfield, cval, field;
   tree t = (*stack)[depth];
+  resolve_lattice_t result = UNDEFINED;
   /* At the bottom of the stack, string values should be */
   if (depth == 0)
     {
@@ -240,8 +283,11 @@ parse_ref_1 (struct cgraph_node *node, gimple *stmt, struct signature *sign,
 	{
 	case ARRAY_REF:
 	  FOR_EACH_CONSTRUCTOR_ELT (CONSTRUCTOR_ELTS (ctor), cnt, cfield, cval)
-	    if (!parse_symbol (node, stmt, cval, sign))
-	      return false;
+	    {
+	      resolve_lattice_t p_res = parse_symbol (node, stmt, cval, sign);
+	      result = resolve_lattice_meet (result, p_res);
+	    }
+	  return result;
 	  break;
 
 	case COMPONENT_REF:
@@ -249,20 +295,23 @@ parse_ref_1 (struct cgraph_node *node, gimple *stmt, struct signature *sign,
 	  FOR_EACH_CONSTRUCTOR_ELT (CONSTRUCTOR_ELTS (ctor), cnt, cfield, cval)
 	    if (field == cfield)
 	      return parse_symbol (node, stmt, cval, sign);
+	  gcc_unreachable ();
 	  break;
 
 	default:
-	  return false;
+	  return DYNAMIC;
 	}
-      return true;
     }
   /* Dive into constructor */
   switch (TREE_CODE (t))
     {
     case ARRAY_REF:
       FOR_EACH_CONSTRUCTOR_ELT (CONSTRUCTOR_ELTS (ctor), cnt, cfield, cval)
-	if (!parse_ref_1 (node, stmt, sign, cval, stack, depth - 1))
-	  return false;
+	{
+	  resolve_lattice_t p_res = parse_ref_1 (node, stmt, sign,
+						 cval, stack, depth - 1);
+	  result = resolve_lattice_meet (result, p_res);
+	}
       break;
 
     case COMPONENT_REF:
@@ -270,15 +319,16 @@ parse_ref_1 (struct cgraph_node *node, gimple *stmt, struct signature *sign,
       FOR_EACH_CONSTRUCTOR_ELT (CONSTRUCTOR_ELTS (ctor), cnt, cfield, cval)
 	if (field == cfield)
 	  return parse_ref_1 (node, stmt, sign, cval, stack, depth - 1);
+      gcc_unreachable ();
       break;
 
     default:
-      return false;
+      result = resolve_lattice_meet (result, DYNAMIC);
     }
-  return true;
+  return result;
 }
 
-static bool
+static resolve_lattice_t
 parse_ref (struct cgraph_node *node, gimple *stmt, 
 	   tree *expr_p, struct signature *sign)
 {
@@ -291,7 +341,7 @@ parse_ref (struct cgraph_node *node, gimple *stmt,
 
   /* Do not parse if cannot reach base's decl */
   if (!DECL_P (base))
-    return false;
+    return DYNAMIC;
 
   ctor = ctor_for_folding (base);
   /* Cannot find a constructor of the decl */
@@ -306,7 +356,7 @@ parse_ref (struct cgraph_node *node, gimple *stmt,
 	}
 
       if (contains_ref_expr (node, expr_p))
-	return false;
+	return DYNAMIC;
 
       return collect_values (node, expr_p, sign);
     }
@@ -316,10 +366,10 @@ parse_ref (struct cgraph_node *node, gimple *stmt,
 /* 
   Parse function argument, make recursive step 
 */
-static bool
+static resolve_lattice_t
 parse_default_def (struct cgraph_node *node, tree default_def, struct signature *sign)
 {
-  bool result = true;
+  resolve_lattice_t result = UNDEFINED;
   int arg_num;
   tree t, symbol, sym_decl = SSA_NAME_IDENTIFIER (default_def);
   struct cgraph_edge *cs;
@@ -334,10 +384,11 @@ parse_default_def (struct cgraph_node *node, tree default_def, struct signature 
   /* If no callers or DEFAULT_DEF is not represented in DECL_ARGUMENTS
      we cannot resolve the possible set of symbols */
   if (!node->callers || !t)
-    return false;
+    return result;
 
   for (cs = node->callers; cs; cs = cs->next_caller)
     {
+      resolve_lattice_t parse_result;
       struct signature subsign = {sign->func_name, arg_num};
       caller_name = cs->caller->asm_name ();
 
@@ -354,13 +405,14 @@ parse_default_def (struct cgraph_node *node, tree default_def, struct signature 
 	}
       considered_functions.add (caller_name);
       symbol = gimple_call_arg (cs->call_stmt, arg_num);
-      result &= parse_symbol (cs->caller, cs->call_stmt, symbol, &subsign);
+      parse_result = parse_symbol (cs->caller, cs->call_stmt, symbol, &subsign);
+      result = resolve_lattice_meet (result, parse_result);
       considered_functions.remove (caller_name);
     }
   return result;
 }
 
-static bool 
+static resolve_lattice_t
 parse_symbol (struct cgraph_node *node, gimple *stmt, 
 	      tree symbol, struct signature *sign)
 {
@@ -385,7 +437,7 @@ parse_symbol (struct cgraph_node *node, gimple *stmt,
 	  symbols = &empty_symbols;
 	}
       (*symbols)->add (symname);
-      return true;
+      return CONSTANT;
 
     case SSA_NAME:
       if (SSA_NAME_IS_DEFAULT_DEF (symbol))
@@ -411,30 +463,30 @@ parse_symbol (struct cgraph_node *node, gimple *stmt,
 	      if (is_read_only (sym_node) && DECL_INITIAL (symbol))
 		return parse_symbol (node, stmt, DECL_INITIAL (symbol), sign);
 
-	      return false;
+	      return DYNAMIC;
 	    }
-	  else
+	  else if (!contains_ref_expr (node, &symbol))
 	    {
-	      return !contains_ref_expr (node, &symbol)
-		&& collect_values (node, &symbol, sign);
+              return collect_values (node, &symbol, sign);
 	    }
-	  return false;
+	  return DYNAMIC;
 	}
 
     case INTEGER_CST:
       /* Allow null reference, permit another */
-      return ! tree_to_shwi (symbol);
+      // TODO null?
+      return ! tree_to_shwi (symbol) ? CONSTANT : DYNAMIC;
 
     default:
-      return false;
+      return DYNAMIC;
     }
 }
 
-static bool
+static resolve_lattice_t
 parse_gimple_stmt (struct cgraph_node *node, gimple* stmt, struct signature *sign)
 {
   unsigned HOST_WIDE_INT i;
-  bool result = true;
+  resolve_lattice_t result = UNDEFINED;
   tree arg;
 
   switch (gimple_code (stmt))
@@ -447,7 +499,7 @@ parse_gimple_stmt (struct cgraph_node *node, gimple* stmt, struct signature *sig
 	  result = parse_symbol (node, stmt, arg, sign);
 	}
       else
-	result = false;
+	result = resolve_lattice_meet (result, DYNAMIC);
       break;
 
     case GIMPLE_PHI:
@@ -458,7 +510,8 @@ parse_gimple_stmt (struct cgraph_node *node, gimple* stmt, struct signature *sig
       for (i = 0; i < gimple_phi_num_args (stmt); i++)
 	{
 	  arg = gimple_phi_arg_def (stmt, i);
-	  result &= parse_symbol (node, stmt, arg, sign);
+	  resolve_lattice_t p_res = parse_symbol (node, stmt, arg, sign);
+	  result = resolve_lattice_meet (result, p_res);
 	}
       break;
 
@@ -468,7 +521,7 @@ parse_gimple_stmt (struct cgraph_node *node, gimple* stmt, struct signature *sig
       break;
 
     default:
-      result = false;
+      result = resolve_lattice_meet (result, DYNAMIC);
       break;
     }
   return result;
@@ -479,7 +532,6 @@ process_calls (struct cgraph_node *node)
 {
   unsigned HOST_WIDE_INT i;
   struct cgraph_edge *cs;
-  bool is_limited;
 
   if (dump_file)
     fprintf (dump_file, "Calls:\n");
@@ -488,20 +540,23 @@ process_calls (struct cgraph_node *node)
     for (i = 0; i < signatures.length (); ++i)
       if (!strcmp (signatures[i].func_name, cs->callee->asm_name ()))
 	{
+	  resolve_lattice_t result;
+
 	  if (dump_file)
 	    fprintf (dump_file, "\t%s matched to the signature\n", 
 		     cs->callee->asm_name ());
 
 	  considered_functions.add (cs->callee->asm_name ());
-	  is_limited = parse_gimple_stmt (node, cs->call_stmt, &signatures[i]);
+	  result = parse_gimple_stmt (node, cs->call_stmt, &signatures[i]);
 	  considered_functions.remove (cs->callee->asm_name ());
 
-	  if (dump_file && !is_limited) 
-	    fprintf (dump_file, "\t%s set is not limited\n", 
-		     cs->callee->asm_name ());
+	  if (dump_file)
+	    {
+	      fprintf (dump_file, "\t%s set state:", cs->callee->asm_name ());
+	      dump_lattice_value (dump_file, result);
+	      fprintf (dump_file, "\n");
+	    }
 	}
-  if (dump_file)
-    fprintf (dump_file, "\n");
 }
 
 static unsigned int 
@@ -648,3 +703,24 @@ dump_node (cgraph_node *node)
   fprintf (dump_file, "\n");
 }
 
+void
+dump_lattice_value (FILE *outf, resolve_lattice_t val)
+{
+  switch (val)
+    {
+    case UNDEFINED:
+      fprintf (outf, "UNDEFINED");
+      break;
+    case DYNAMIC:
+      fprintf (outf, "DYNAMIC");
+      break;
+    case CONSTANT:
+      fprintf (outf, "CONSTANT");
+      break;
+    case PARTIALLY_CONSTANT:
+      fprintf (outf, "PARTIALLY_CONSTANT");
+      break;
+    default:
+      gcc_unreachable ();
+    }
+}
