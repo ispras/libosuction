@@ -64,17 +64,14 @@ dump_node (cgraph_node *node);
 void
 dump_lattice_value (FILE *outf, resolve_lattice_t val);
 
-/* Compute the meet operator between VAL1 and VAL2.
-
+/* Compute the meet operator between VAL1 and VAL2:
    UNDEFINED M UNDEFINED          = UNDEFINED
    DYNAMIC   M UNDEFINED          = DYNAMIC
    DYNAMIC   M DYNAMIC            = DYNAMIC
    CONSTANT  M UNDEFINED          = CONSTANT
-   CONSTANT  M CONSTANT	          = CONSTANT
+   CONSTANT  M CONSTANT           = CONSTANT
    DYNAMIC   M CONSTANT           = PARTIALLY_CONSTANT
-   any	     M PARTIALLY_CONSTANT = PARTIALLY_CONSTANT
-
-*/
+   any       M PARTIALLY_CONSTANT = PARTIALLY_CONSTANT */
 static resolve_lattice_t
 resolve_lattice_meet (resolve_lattice_t val1, resolve_lattice_t val2)
 {
@@ -135,28 +132,28 @@ compare_ref (tree *t1, tree *t2)
   tree *p1 = t1, *p2 = t2;
   while (TREE_CODE (*p1) != VAR_DECL && TREE_CODE (*p2) != VAR_DECL)
     {
-       if (TREE_CODE (*p1) != TREE_CODE (*p2)
-	   || TREE_CODE (*p1) == VAR_DECL
-	   || TREE_CODE (*p2) == VAR_DECL)
-	 return false;
+      if (TREE_CODE (*p1) != TREE_CODE (*p2)
+	  || TREE_CODE (*p1) == VAR_DECL
+	  || TREE_CODE (*p2) == VAR_DECL)
+	return false;
 
-       switch (TREE_CODE (*p1))
-	 {
-	    case ARRAY_REF:
-	      /* Just skip it, we do not care about indeces */
-	      break;
+      switch (TREE_CODE (*p1))
+	{
+	case ARRAY_REF:
+	  /* Just skip it, we do not care about indeces */
+	  break;
 
-	    case COMPONENT_REF:
-	      if (TREE_OPERAND (*p1, 1) != TREE_OPERAND (*p2, 1))
-		return false;
-	      break;
+	case COMPONENT_REF:
+	  if (TREE_OPERAND (*p1, 1) != TREE_OPERAND (*p2, 1))
+	    return false;
+	  break;
 
-	    default:
-	      return false;
-	 }
+	default:
+	  return false;
+	}
 
-       p1 = &TREE_OPERAND (*p1, 0);
-       p2 = &TREE_OPERAND (*p2, 0);
+      p1 = &TREE_OPERAND (*p1, 0);
+      p2 = &TREE_OPERAND (*p2, 0);
     }
   return *p1 == *p2;
 }
@@ -233,7 +230,7 @@ contains_ref_expr (struct cgraph_node *node,  tree *expr)
 	    case GIMPLE_CALL:
 	      /* Do not assume already checked calls */
 	      if (is_considered_call (stmt))
-		  continue;
+		continue;
 
 	      /* Check there is no address getting among arguments */
 	      for (j = 0; j < gimple_call_num_args (stmt); ++j)
@@ -363,9 +360,7 @@ parse_ref (struct cgraph_node *node, gimple *stmt,
   return parse_ref_1 (node, stmt, sign, ctor, &expr_stack, expr_stack.length () - 1);
 }
 
-/* 
-  Parse function argument, make recursive step 
-*/
+/* Parse function argument, make recursive step */
 static resolve_lattice_t
 parse_default_def (struct cgraph_node *node, tree default_def, struct signature *sign)
 {
@@ -399,8 +394,7 @@ parse_default_def (struct cgraph_node *node, tree default_def, struct signature 
 
       if (dump_file)
 	{
-	  fprintf (dump_file, "\tTrack %s symbol obtained from:\n\t\t",
-		   subsymname);
+	  fprintf (dump_file, "\tTrack %s symbol obtained from:\n\t\t", subsymname);
 	  print_gimple_stmt (dump_file, cs->call_stmt, 0, 0);
 	}
       considered_functions.add (caller_name);
@@ -467,7 +461,7 @@ parse_symbol (struct cgraph_node *node, gimple *stmt,
 	    }
 	  else if (!contains_ref_expr (node, &symbol))
 	    {
-              return collect_values (node, &symbol, sign);
+	      return collect_values (node, &symbol, sign);
 	    }
 	  return DYNAMIC;
 	}
@@ -632,8 +626,7 @@ parse_argument (plugin_argument *arg)
       && arg_key[2] == 'g' && arg_key[3] == 'n'
       && arg_key[4] == '-')
     {
-      struct signature initial = { .func_name = &arg_key[5],
-				   .sym_pos = atoi (arg_value) };
+      struct signature initial = { &arg_key[5], atoi (arg_value) };
       signatures.safe_push (initial);
     }
 }
