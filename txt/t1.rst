@@ -1,0 +1,403 @@
+Binary Size Optimization
+========================
+Background and Problem Statement
+--------------------------------
+We consider the problem of eliminating unused code and data regions in dynamic
+linking. In static linking, the following solution is commonly used: first, the
+compiler is directed to emit each function and data entity into separate
+sections via ``-ffunction-sections`` and ``-fdata-sections``; next, the linker
+is told to eliminate unused sections via ``--gc-sections`` command-line flag.
+
+To decide which sections to keep, the linker starts with the section containing
+the future executable's entry point (usually the symbol named ``_start``), marks
+it as used, and for each relocation applied to this section, recursively marks
+the section holding the relocation target. When linker scripts are used,
+additional search roots can be specified via the ``KEEP`` command.
+
+.. Unfortunately, the linker has to apply special handling to ``.eh_frame`` and
+    debug sections.
+
+This mechanism can be used with dynamic linking as well. In that case, in
+addition to the entry point, the linker will use all sections referenced from
+the ``.dynamic`` section as search roots. This includes global
+initialization/finalization code (such as constructors of global C++ objects),
+and, in case of dynamic libraries, all public symbols. As a result, very few
+sections can be eliminated from dynamic libraries, as almost all code will be
+statically reachable from public functions.
+
+Therefore, to facilitate elimination in dynamic libraries, we need to determine
+which dynamic symbols can be ultimately referenced at run time. This is only
+possible under these assumptions:
+
+- We assume that we have a global view of all dynamic executables and libraries
+  comprising the system image. This implies that no new executables can be added
+  or replaced in the system image after we eliminated some dynamic symbols:
+  otherwise, they can fail to work properly due to missing symbols.
+
+- We need to require that dynamic dependencies can be computed, even though in
+  general it is infeasible.
+
+Dependencies to dynamic symbols can be classified into these broad categories:
+
+1. Explicit link-time dependencies. These correspond to the most common type of
+   references, when a dynamic symbol is simply referenced by name. These
+   references can be discovered by looking at unresolved external references at
+   link time.
+
+2. Dynamic symbol lookups via dynamic linker facilities such as ``dlsym``. It is
+   not unusual in programs that implement plugin-like functionality. The common
+   problem with this kind of references is that they are not trivially
+   discoverable due to abstraction layers on top of dlsym. In some cases the
+   symbol name argument to dlsym will not be a string literal. In the worst
+   case, the argument can be determined only at run time, for example in
+   interpreter-like programs.
+
+3. Dynamic symbol lookups via direct examination of ELF headers at run time.
+   Unlike lookups via standard interfaces like ``dlsym``, such references cannot
+   be automatically discovered in general, and will require manual annotation.
+
+In this work, we aim to fully automate processing of static dependencies and
+discovery of calls to ``dlsym``. For each call, we aim to compute the target
+symbol name on a best-effort basis via compiler analysis, leaving the cases
+where static analysis fails to manual annotation.
+
+Many programs with dynamic lookups also have internal ``dlsym``-like functions
+(wrappers). We aim to discover such wrappers automatically where possible, and
+treat them similar to ``dlsym`` in analysis.
+
+General Approach
+----------------
+First, we need to discover all ``dlsym``-like functions. This needs one full
+rebuild, during which we collect annotations called *jump functions* that show
+whether one function forwards one of its arguments to another. After all
+jump functions are collected, we find the set of ``dlsym``-like functions as
+the set of functions from which ``dlsym`` is reachable on the merged jump
+function graph.
+
+We have implemented a GCC plugin to collect jump function annotations during the
+build, and a utility called ``jf2sign`` to generate signatures of ``dlsym``-like
+functions.
+
+After that, we need to build and inspect the system-wide
+dependency graph on sections and symbols participating in all dynamically linked
+modules. Thus, the complete process needs four stages:
+
+1. The system image is fully rebuilt to collect jump functions and collect the
+   set of ``dlsym``-like functions. One GCC plugin is active at this stage.
+
+2. The system image is fully rebuilt again to collect dependency subgraphs for each linked
+   module. Two plugins are active at this stage: one GCC plugin to find dynamic
+   lookups, using signatures of ``dlsym``-like functions from the previous
+   stage; and one linker plugin to find explicit link-time dependencies.
+
+3. Dependency subgraphs are merged into system-wide dependency graph, and unused
+   dynamic symbols are discovered. This is performed by a standalone tool.
+
+4. The system image is fully rebuilt the third time, with unused dynamic
+   symbols and their dependencies eliminated. Again, two plugins are active at
+   this stage. A linker plugin is needed to guide elimination in the
+   linker. A compiler plugin is used to regenerate *srcids*, and may also
+   augment GCC's call graph information to strengthen optimization.
+
+Further sections detail the approaches used at each stage.
+
+Linker Plugin for Collecting Symbol Dependencies
+------------------------------------------------
+We use `linker plugin API`__ to collect intra-module dependency information.
+Compilers use this API to implement LTO (link-time optimization); here we use it
+in a purely introspective manner. The API allows the same plugin to be used with
+both the traditional BFD linker and the new Gold linker.
+
+.. __: https://gcc.gnu.org/wiki/whopr/driver
+
+The linker informs the plugin about each file participating in the link via the
+``claim_file`` hook. In our handler, we walk ELF datastructures and process the
+following sections:
+
+- Symbol tables. We discover which section defines which symbol, their binding
+  (global or local), and visibility. Symbols with default or protected visiblity
+  can participate in dynamic linking.
+
+- Relocation tables. This gives a view of intra-module section dependency
+  information. Some relocations cannot be resolved at link time, if their target
+  is a symbol defined outside of this module. In that case, they become
+  dynamic relocations and ultimately resolved by the dynamic linker.
+
+- We also record information such as section names and sizes for all sections
+  that can contain executable code and data.
+
+After all input files are processed, the linker invokes the ``all_symbols_read``
+plugin hook. In our handler, we emit the collected information:
+
+- Module information: library or executable, name, entry point.
+
+- For each input object file, its location and sections.
+
+- For each section, its name, size, whether it must be preserved (for sections
+  with global constructors), and intra-module dependencies to other sections.
+
+- For each non-local symbol, its status (binding and visibility), defining
+  section and references from other sections.
+
+Compiler Plugin for Collecting Dynamic Lookups
+----------------------------------------------
+We use `GCC plugin API`__ to find which symbols the code may attempt to look up
+dynamically via ``dlsym``-like functions at run time. This is not always
+possible, but nevertheless very helpful to reduce the amount of manual work.
+Unlike the linker plugin API, GCC plugin API is not stable. A plugin library is
+only usable with the specific compiler version it was built against. Due to API
+changes, compatibility with multiple GCC versions may require maintaining
+separate versions of plugin code.
+
+.. __: https://gcc.gnu.org/wiki/plugins
+
+GCC plugins may use almost all internal compiler interfaces. We register a new
+IPA (inter-procedural analysis) pass, and for each reference to ``dlsym`` (or a
+similar function), we test whether the symbol name argument is a compile-time
+constant string. The plugin handles references to constant arrays of pointers
+and can look through static wrapper functions.
+
+The output of this plugin is a list of annotations for each reference to
+dlsym-like function: a list of dynamic symbols possibly looked up at that point,
+whether the solution is exact, whether this reference is not a call to dlsym but
+rather taking its address, or if one of call sites is an externally visible
+function which can act as a dlsym-like function.
+
+Analyzing the System-Wide Dependency Graph
+------------------------------------------
+To compute the set of eliminable symbols and sections, we use a small tool for
+combining the dependency subgraphs produced by the linker plugin (a work is in
+progress for adding dependency edges for dynamic lookups from the compiler
+plugin and manual annotations). Similar to individual subgraphs, the combined
+graph has two kinds of nodes: corresponding to symbols, and corresponding to
+sections. Directed edges go from each symbol to all sections defining it (as
+indicated by symbol tables), and from each section to all sections and symbols
+referenced by it (as indicated by relocation tables).
+
+On the combined graph, we mark reachable nodes starting from the following
+search roots:
+
+- Entry points of all executables.
+
+- All sections marked as used by the linker plugin. These are sections holding
+  global constructors/destructors. They are referenced from the ``.dynamic``
+  sections and treated separately by the dynamic linker, and not necessary
+  reached during the previous step.
+
+- Exception handling personality routines such as ``__gxx_personality_v0``.
+  Unfortunately, we need to special-case them: they are referenced only from
+  ``.eh_frame`` sections, which are treated specially by linkers, and which we
+  currently ignore.
+
+After marking is complete, symbol nodes fall into these categories:
+
+- Unmarked. These symbols are completely unused and can be removed.
+
+- Marked, but all marked predecessors are in the same object file. These symbols
+  could have been static in their original translation unit.
+
+- Marked, but all marked predecessors are in the same executable or library.
+  These symbols may be changed to have hidden visibility.
+
+- Any other marked symbols. They cannot be optimized.
+
+While only the symbols in first category correspond to eliminable code or data,
+we separate the second and third category to facilitate compiler optimization.
+
+Compiler Plugin for Symbol Privatization
+----------------------------------------
+The system-wide analysis phase provides finer symbol status information that can
+be used to improve optimization at compile time. This is not strictly necessary
+(a linker plugin, described later, is required in any case), but can improve
+code size, especially thanks to exact symbol visibility information.
+
+Our second compiler plugin (separate from the one performing ``dlsym`` analysis)
+consumes symbol information and applies it to GCC internal representation via a
+custom IPA pass that is scheduled to run just prior to GCC pass named
+``"function_and_variable_visibility"`` that can make use of this information to
+eliminate unused symbols early on. Later, inlining passes can also make use of
+improved information.
+
+Treatment of C++ entities with vague linkage (usually corresponding to so-called
+comdat sections on linker level) is non-trivial in GCC and needs some special
+handling in the plugin (due to internal constraints on comdat symbols in GCC).
+
+Enabling Section Elimination at Link Time
+-----------------------------------------
+Ultimately, we need to apply symbol status changes at link time. This is
+required: we cannot rely on the compiler plugin to carry out all changes,
+because some symbols can arrive from assembly files, invisible to the compiler.
+Doing both analysis and elimination on the linker level ensures consistency.
+
+To enable garbage collection of sections with unreferenced code at link time,
+we need to change dynamic visibility of unused public symbols from "default" to
+"hidden". We have implemented two different approaches.
+
+Initially we have implemented a linker plugin (detailed in the following
+subsection). The second plugin uses the same LTO plugin API as the first plugin
+used for dependency analysis, but unlike the first, it is not purely
+introspective: it will "claim" and change input object files where symbol
+visibility needs to be changed.
+
+However, over the course of the work we have identified multiple issues that
+caused build failures and correctness issues, such as:
+
+1. The BFD linker may change library search order when a plugin is active. This
+   can be partially worked around by preferring the Gold linker, but not all
+   packages can be built correctly with it.
+
+2. Support for versioned symbols in the plugin API is poor, with different
+   behavior between BFD and Gold linkers in some cases.
+
+3. There is no mechanism for preserving constructor order. Although there is no
+   guaranteed ordering for constructors with default priority taken from
+   different object files, some packages may (erroneously) rely on default
+   ordering, and will be broken when plugin claims such files.
+
+This prompted us to implement a second approach, where an auxiliary object file
+is generated at run time and added to linker command line from the wrapper. We
+still employ a plugin for verbose diagnostics in case of linkid mismatch.
+
+In the new approach, we generate a temporary assembly file containing references
+to symbols defined in other object files. We use ``.hidden`` directive to set
+visibility of these symbols to "hidden": according to ELF linking rules, the
+most constraining symbol visiblity is taken from all symbol entries, including
+references. We obtain a corresponding object file by invoking the compiler, and
+place the temporary object first on the command line (in theory any position
+would work, but using the first position avoids a bug in the Gold linker).
+
+This approach is compatible with symbol versioning and does not disturb
+constructor and library ordering, thus so far we have found it to be more robust
+compared to the plugin approach.
+
+In closing, this step enhances ``--gc-sections`` functionality without forcibly performing
+any elimination on its own, and for that reason it is relatively simple and
+safe. It also has a bit more flexibility compared to the compiler plugin in that
+when one object file is used in multiple link commands, it can privatize symbols
+differently depending on what output module is being produced.
+
+Source and Object File Identification
+-------------------------------------
+We need a reliable way to find corresponding source and object files on each
+rebuild: when transformation plugins are running in the last phase, they need to
+know exactly which files they are operating on. File names are unsuitable for
+this purpose, because they can be unstable between builds (e.g. temporary object
+files are generated as ``/tmp/cc123456.o`` by GCC).
+
+We solve this by introducing reproducible hash-based identifiers for object
+files called *srcid* and similar identifiers, *linkids*, for linker-produced
+modules (executables and shared libraries).
+
+For an object file produced from C/C++ source code, we generate its srcid from
+the compiler plugin as the MD5 hash of a textual dump of internal representation
+(symbol table and GIMPLE IR). Before computing MD5, we *"blind"* the textual
+representation by replacing all characters in constant strings. Without this,
+the hash is affected by build timestamps if the source uses ``__DATE__`` and
+``__TIME__`` macros.
+
+The compiler plugin emits srcid information as a zero-size
+``.note.privplugid.123abc…`` section (with the 32-character suffix giving the
+128-byte MD5 hash). The ``SHF_EXCLUDE`` flag is set on the section, so the
+linker discards them automatically.
+
+The approach is chosen so that srcids are not affected by stronger optimizations
+in the final rebuild phase. For files generated from assembly, the compiler
+plugin is not active, and their srcid is taken simply as the hash of their
+contents.
+
+Likewise, for stable identification of linked modules, we also use hashes
+designed to be stable across runs: here it is simply the XOR-sum of srcids of
+participating object files.
+
+When incremental link via ``ld -r`` is performed, its linkid becomes the srcid
+of the produced object file.
+
+Build System Integration
+------------------------
+To facilitate integration with build systems, we are building small wrappers
+that can augment linker or compiler command line, adding our plugins.
+Furthermore, to collect data from plugins, the wrapper opens a socket for
+communicating with a simple listening server. At the moment, we use a unix
+socket in an abstract namespace: this allows to easily collect information from
+compile jobs running in ``chroot`` environments.
+
+Our compiler wrapper adds ``-ffunction-sections`` ``-fdata-sections`` to the
+compiler command line, along with options needed to enable the plugin. We also
+use the wrapper to disable LTO, because our linker plugins cannot be used
+together with compiler LTO plugin.
+
+Our linker wrapper adds ``--gc-sections`` to ``ld`` command line. We also scan
+the linker command line to discover the request entry point name, compute
+*linkid* for the plugin, and handle incremental linking (``ld -r``).
+
+Evaluation on Tizen
+-------------------
+We have integrated the approach with an OBS instance at ISP RAS. Our RPM spec
+files build and install plugins in a manner compatible with "build acceleration"
+approach used in Tizen builds (with native executables placed under ``/emul``).
+
+We have identified a bug in Glibc that prevents correct linking with
+``--gc-sections``. We solve this by applying a small patch to Glibc
+``configure`` script and ``Makerules`` file.
+
+We have found a problematic behavior in the BFD linker where it would pass
+members of static archives to the plugin even though normally those members
+would not participate in the link. This affects dependency calculation in the
+plugin and may lead to build failures, in which case our wrapper executes the
+Gold linker as a fallback. In general, using Gold would have been preferable,
+but unfortunately some packages currently can be built only with BFD ld.
+
+For Tizen:Headless 20170303 snapshot all 161 packages built successfully.
+For Tizen:4.0:Unified, currently we can successfully build 465 of 851 packages.
+The following table shows size changes for both OBS projects. For each project we count only the packages that have built successfully in that project, and only those containing ELF32 binaries.
+
+.. image:: pdf/tizen-mkpriv-opt.pdf
+
+
+Correctness Evaluation on CRUX
+------------------------------
+CRUX is a source-based GNU/Linux distribution, so building everything
+from source and tweaking any part of the system is
+straightforward. There are several collections of "ports" (crux jargon
+for "packages") maintained by the crux team, currently we are only
+building `core`__, a collection comprising 101 essential ports. It is
+easy to enable other collections or ports as well, but right now we want
+to build a minimal but complete system.
+
+.. __: https://crux.nu/ports/crux-3.3/core/
+
+For building CRUX, we use the method described on `CRUX wiki page`__ (we
+changed the Makefile for our needs). Everything is built on x86_64 and
+for x86_64.
+
+.. __: https://crux.nu/Wiki/BuildingISO 
+
+First, we build all the selected ports and create installable archives (rpm
+analogues). Second, we create a clean chroot environment and install the
+packages (the whole world) there. Then we perform rebuild of the selected ports
+three times (with different plugins, per our design), each time in a clean
+chroot with the installed world consisting of the packages built during the
+previous rebuild.
+
+At any step we can create a bootable image, or just chroot into the
+chroot directory and test the system we've built. A good way to test
+correctness (apart from just running executables or ``make check``) is to
+run ``ldd -r`` . When invoked in this way on a
+dynamic executable, ldd recursively walks the dependencies (shared
+libraries) and checks that all the dynamic symbols are resolved. In this
+way we can ensure we haven't eliminated anything we shouldn't have.
+
+At the moment, just one package from core fails to rebuild with our
+eliminating plugins: Glibc. We have identified and fixed several issues
+in its configure script (such as compatiblity issues with ``--gc-sections`` or
+using tools like ``nm`` to look for eliminable symbols), but still some remain.
+
+To obtain approximate results, we installed the system with the glibc
+package untouched, run ``ldd
+-r`` on all ELF files in the system and didn't see any unexplained
+undefined references (there are undefined references present in a normal
+system, like yylex and some libthread_db's undefined symbols).
+
+Reduction in size for the whole CRUX core system (when installed) is 34
+MB (out of 375). We are currently analyzing the changes and looking into
+remaining issues on Glibc build, so this number may change.
