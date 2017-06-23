@@ -509,11 +509,6 @@ parse_gimple_stmt (struct cgraph_node *node, gimple* stmt, struct signature *sig
 	}
       break;
 
-    case GIMPLE_CALL:
-      arg = gimple_call_arg (stmt, sign->sym_pos);
-      result = parse_symbol (node, stmt, arg, sign);
-      break;
-
     default:
       result = resolve_lattice_meet (result, DYNAMIC);
       break;
@@ -526,6 +521,7 @@ process_calls (struct cgraph_node *node)
 {
   unsigned HOST_WIDE_INT i;
   struct cgraph_edge *cs;
+  tree symbol;
 
   if (dump_file)
     fprintf (dump_file, "Calls:\n");
@@ -541,7 +537,10 @@ process_calls (struct cgraph_node *node)
 		     cs->callee->asm_name ());
 
 	  considered_functions.add (cs->callee->asm_name ());
-	  result = parse_gimple_stmt (node, cs->call_stmt, &signatures[i]);
+
+	  symbol = gimple_call_arg (cs->call_stmt, signatures[i].sym_pos);
+	  result = parse_symbol (node, cs->call_stmt, symbol, &signatures[i]);
+
 	  considered_functions.remove (cs->callee->asm_name ());
 
 	  if (dump_file)
