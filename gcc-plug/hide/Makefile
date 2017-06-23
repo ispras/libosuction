@@ -1,8 +1,10 @@
-CXXFLAGS += -fpic -fno-exceptions -fno-rtti
+CXXFLAGS += -fpic -fno-exceptions -fno-rtti -g3 -O0 -fno-inline-functions
 CPPFLAGS += -I$(shell $(CC) -print-file-name=plugin)/include
 
 PLUGNAME = libmkpriv
 PLUGIN = $(PLUGNAME).so
+
+all: $(PLUGIN)
 
 $(PLUGIN): plug.o
 	$(CXX) -shared -o $@ $^
