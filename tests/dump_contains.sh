@@ -107,7 +107,8 @@ echo $(simple_test local_array.c "main->dlsym->\[bar\]" 1 "Symbol Set" )
 # TODO local.c (extern variable) + local_d.c + local.h
 echo $(simple_test macro_passing.c "dlsym matched to the signature" 2 "Signature"  )
 echo $(simple_test macro_passing.c "dlsym set state:CONSTANT" 2 "CONSTANT" )
-echo $(simple_test macro_passing.c "main->dlsym->\[(foo,bar)|(bar,foo)\]" 1 "Symbol Set" )
+echo $(simple_test macro_passing.c "main->dlsym->\[foo\]" 1 "Symbol Set" )
+echo $(simple_test macro_passing.c "main->dlsym->\[bar\]" 1 "Symbol Set" )
 # TODO phi_rec.c
 echo $(simple_test proxy.c "dlsym matched to the signature" 2 "Signature"  )
 echo $(simple_test proxy.c "dlsym set state:CONSTANT" 1 "CONSTANT" )

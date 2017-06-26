@@ -19,6 +19,10 @@
 #include "hash-map.h"
 #include "hash-set.h"
 #include "cgraph.h"
+
+typedef hash_set<const char *, nofree_string_hash> string_set;
+typedef hash_map<const char *, string_set *> call_symbols;
+
 int plugin_is_GPL_compatible;
 
 typedef enum
@@ -32,33 +36,85 @@ typedef enum
 // TODO warning &dlsym &func->dlsym
 struct signature
 {
-  const char* func_name;
+  const char *func_name;
   int sym_pos;
 };
 
-/* TODO add considered_functions and change the parse_call signature
-   according to the call info */
+/* Describes the context of particular function */
 struct call_info
 {
-  /* Function, where dynamic call appears  */
-  function* func;
+  /* Function node in the call graph */
+  struct cgraph_node *node;
+  /* Call statement */
+  gimple *stmt;
   /* Signature of dynamic call */
-  struct signature sign;
+  struct signature *sign;
 };
 
-typedef hash_map<const char*, hash_set<const char*, nofree_string_hash>*> call_symbols;
+/* Describes the context of dlsym usage */
+struct resolve_ctx
+{
+  /* Initial sinature of dlsym */
+  struct signature *sign;
+  /* Hash set of considered functions
+     for detecting cycles in cgraph */
+  string_set *considered_functions;
+  /* Hash map of signature names on
+     hash set of possible symbols */
+  call_symbols *dynamic_symbols;
+  /* Chain of calls (wrappers) that pass symbol through body.
+     In other words, callstack. */
+  vec<call_info> calls_chain;
+};
+
+static void
+init_resolve_ctx (struct resolve_ctx *ctx)
+{
+  ctx->considered_functions = new string_set;
+  ctx->dynamic_symbols = new call_symbols;
+}
+
+static void
+free_resolve_ctx (struct resolve_ctx *ctx)
+{
+  free (ctx->considered_functions);
+  for (call_symbols::iterator it = ctx->dynamic_symbols->begin ();
+       it != ctx->dynamic_symbols->end ();
+       ++it)
+    delete (*it).second;
+  free(ctx->dynamic_symbols);
+}
+
+static struct call_info *
+get_current_call_info (resolve_ctx *ctx)
+{
+  return &ctx->calls_chain.last ();
+}
+
+static void
+push_call_info (struct resolve_ctx *ctx, struct cgraph_node *node,
+		gimple *stmt, struct signature *sign)
+{
+  struct call_info call = { node, stmt, sign };
+  ctx->considered_functions->add (sign->func_name);
+  ctx->calls_chain.safe_push (call);
+}
+
+static void
+pop_call_info (resolve_ctx *ctx)
+{
+  struct call_info call = ctx->calls_chain.pop ();
+  ctx->considered_functions->remove (call.sign->func_name);
+}
 
 static vec<struct signature> signatures;
-static hash_set<const char*, nofree_string_hash> considered_functions;
-static call_symbols dynamic_symbols;
 
 static resolve_lattice_t
-parse_symbol (struct cgraph_node *node, gimple *stmt,
-	      tree symbol, struct signature *sign);
+parse_symbol (struct resolve_ctx *ctx, gimple *stmt, tree symbol);
 static resolve_lattice_t
-parse_gimple_stmt (struct cgraph_node *node, gimple* stmt, struct signature *sign);
+parse_gimple_stmt (struct resolve_ctx *ctx, gimple *stmt);
 void
-dump_dynamic_symbol_calls (function* func, call_symbols *symbols);
+dump_dynamic_symbol_calls (function *func, call_symbols *symbols);
 void
 dump_node (cgraph_node *node);
 void
@@ -94,21 +150,21 @@ resolve_lattice_meet (resolve_lattice_t val1, resolve_lattice_t val2)
 }
 
 static bool
-is_considered_call (gimple *stmt)
+is_considered_call (struct resolve_ctx *ctx, gimple *stmt)
 {
   tree decl;
   tree t = gimple_call_fndecl (stmt);
   if (t && DECL_P (t))
     {
       decl = DECL_NAME (gimple_call_fndecl (stmt));
-      if (considered_functions.contains (IDENTIFIER_POINTER (decl)))
+      if (ctx->considered_functions->contains (IDENTIFIER_POINTER (decl)))
 	return true;
     }
   return false;
 }
 
 static bool
-is_read_only (struct varpool_node *node)
+is_read_only (struct resolve_ctx *ctx, struct varpool_node *node)
 {
   unsigned i;
   ipa_ref *ref = NULL;
@@ -117,7 +173,7 @@ is_read_only (struct varpool_node *node)
       /* Skip already considered functions */
       if (ref->use == IPA_REF_ADDR
 	  && gimple_code (ref->stmt) == GIMPLE_CALL
-	  && is_considered_call (ref->stmt))
+	  && is_considered_call (ctx, ref->stmt))
 	continue;
 
       if (ref->use != IPA_REF_LOAD)
@@ -177,13 +233,14 @@ unwind_expression_to_stack (tree *expr_p, auto_vec<tree, 10> *stack)
 }
 
 static resolve_lattice_t
-collect_values (struct cgraph_node *node, tree *expr, struct signature *sign)
+collect_values (struct resolve_ctx *ctx, tree *expr_p)
 {
   resolve_lattice_t result = UNDEFINED;
   basic_block bb;
   gimple *stmt;
+  struct call_info *call = get_current_call_info (ctx);
 
-  FOR_EACH_BB_FN (bb, node->get_fun ())
+  FOR_EACH_BB_FN (bb, call->node->get_fun ())
     {
       gimple_stmt_iterator si;
       for (si = gsi_start_bb (bb); !gsi_end_p (si); gsi_next (&si))
@@ -197,9 +254,9 @@ collect_values (struct cgraph_node *node, tree *expr, struct signature *sign)
 	      tree rhs = gimple_assign_rhs1 (stmt);
 	      tree lhs = gimple_assign_lhs (stmt);
 
-	      if (compare_ref (expr, &lhs) && !TREE_CLOBBER_P (rhs))
+	      if (compare_ref (expr_p, &lhs) && !TREE_CLOBBER_P (rhs))
 		{
-		  resolve_lattice_t p_res = parse_symbol (node, stmt, rhs, sign);
+		  resolve_lattice_t p_res = parse_symbol (ctx, stmt, rhs);
 		  result = resolve_lattice_meet (result, p_res);
 		}
 	    }
@@ -211,12 +268,13 @@ collect_values (struct cgraph_node *node, tree *expr, struct signature *sign)
 
 
 static bool
-contains_ref_expr (struct cgraph_node *node,  tree *expr)
+contains_ref_expr (struct resolve_ctx *ctx,  tree *expr_p)
 {
   basic_block bb;
   unsigned j;
   gimple *stmt;
-  tree base = get_base_address(*expr), *op;
+  tree base = get_base_address (*expr_p), *op;
+  struct cgraph_node *node = get_current_call_info (ctx)->node;
 
   // TODO use dominators and stmt seq for more precise prediction.
   FOR_EACH_BB_FN (bb, node->get_fun ())
@@ -229,7 +287,7 @@ contains_ref_expr (struct cgraph_node *node,  tree *expr)
 	    {
 	    case GIMPLE_CALL:
 	      /* Do not assume already checked calls */
-	      if (is_considered_call (stmt))
+	      if (is_considered_call (ctx, stmt))
 		continue;
 
 	      /* Check there is no address getting among arguments */
@@ -237,7 +295,7 @@ contains_ref_expr (struct cgraph_node *node,  tree *expr)
 		{
 		  tree arg = gimple_call_arg (stmt, j);
 		  if (TREE_CODE (arg) == ADDR_EXPR
-		      && base == get_base_address (TREE_OPERAND(arg, 0)))
+		      && base == get_base_address (TREE_OPERAND (arg, 0)))
 		    return true;
 		}
 	      break;
@@ -266,8 +324,8 @@ contains_ref_expr (struct cgraph_node *node,  tree *expr)
 }
 
 static resolve_lattice_t
-parse_ref_1 (struct cgraph_node *node, gimple *stmt, struct signature *sign, 
-	     tree ctor, auto_vec<tree, 10> *stack, unsigned HOST_WIDE_INT depth)
+parse_ref_1 (struct resolve_ctx *ctx, gimple *stmt, tree ctor,
+	     auto_vec<tree, 10> *stack, unsigned HOST_WIDE_INT depth)
 {
   unsigned HOST_WIDE_INT cnt;
   tree cfield, cval, field;
@@ -281,7 +339,7 @@ parse_ref_1 (struct cgraph_node *node, gimple *stmt, struct signature *sign,
 	case ARRAY_REF:
 	  FOR_EACH_CONSTRUCTOR_ELT (CONSTRUCTOR_ELTS (ctor), cnt, cfield, cval)
 	    {
-	      resolve_lattice_t p_res = parse_symbol (node, stmt, cval, sign);
+	      resolve_lattice_t p_res = parse_symbol (ctx, stmt, cval);
 	      result = resolve_lattice_meet (result, p_res);
 	    }
 	  return result;
@@ -291,7 +349,7 @@ parse_ref_1 (struct cgraph_node *node, gimple *stmt, struct signature *sign,
 	  field = TREE_OPERAND (t, 1);
 	  FOR_EACH_CONSTRUCTOR_ELT (CONSTRUCTOR_ELTS (ctor), cnt, cfield, cval)
 	    if (field == cfield)
-	      return parse_symbol (node, stmt, cval, sign);
+	      return parse_symbol (ctx, stmt, cval);
 	  gcc_unreachable ();
 	  break;
 
@@ -305,8 +363,8 @@ parse_ref_1 (struct cgraph_node *node, gimple *stmt, struct signature *sign,
     case ARRAY_REF:
       FOR_EACH_CONSTRUCTOR_ELT (CONSTRUCTOR_ELTS (ctor), cnt, cfield, cval)
 	{
-	  resolve_lattice_t p_res = parse_ref_1 (node, stmt, sign,
-						 cval, stack, depth - 1);
+	  resolve_lattice_t p_res = parse_ref_1 (ctx, stmt, cval,
+						 stack, depth - 1);
 	  result = resolve_lattice_meet (result, p_res);
 	}
       break;
@@ -315,7 +373,7 @@ parse_ref_1 (struct cgraph_node *node, gimple *stmt, struct signature *sign,
       field = TREE_OPERAND (t, 1);
       FOR_EACH_CONSTRUCTOR_ELT (CONSTRUCTOR_ELTS (ctor), cnt, cfield, cval)
 	if (field == cfield)
-	  return parse_ref_1 (node, stmt, sign, cval, stack, depth - 1);
+	  return parse_ref_1 (ctx, stmt, cval, stack, depth - 1);
       gcc_unreachable ();
       break;
 
@@ -326,8 +384,7 @@ parse_ref_1 (struct cgraph_node *node, gimple *stmt, struct signature *sign,
 }
 
 static resolve_lattice_t
-parse_ref (struct cgraph_node *node, gimple *stmt, 
-	   tree *expr_p, struct signature *sign)
+parse_ref (struct resolve_ctx *ctx, gimple *stmt, tree *expr_p)
 {
   tree base, ctor, t;
   auto_vec<tree, 10> expr_stack;
@@ -347,30 +404,31 @@ parse_ref (struct cgraph_node *node, gimple *stmt,
       /* Global var */
       if (TREE_STATIC (base) || DECL_EXTERNAL (base) || in_lto_p)
 	{
-	  if (is_read_only (varpool_node::get(base)) && DECL_INITIAL (base))
-	    return parse_ref_1 (node, stmt, sign, DECL_INITIAL (base),
+	  if (is_read_only (ctx, varpool_node::get(base)) && DECL_INITIAL (base))
+	    return parse_ref_1 (ctx, stmt, DECL_INITIAL (base),
 				&expr_stack, expr_stack.length () - 1);
 	}
 
-      if (contains_ref_expr (node, expr_p))
+      if (contains_ref_expr (ctx, expr_p))
 	return DYNAMIC;
 
-      return collect_values (node, expr_p, sign);
+      return collect_values (ctx, expr_p);
     }
-  return parse_ref_1 (node, stmt, sign, ctor, &expr_stack, expr_stack.length () - 1);
+  return parse_ref_1 (ctx, stmt, ctor, &expr_stack, expr_stack.length () - 1);
 }
 
 /* Parse function argument, make recursive step */
 static resolve_lattice_t
-parse_default_def (struct cgraph_node *node, tree default_def, struct signature *sign)
+parse_default_def (struct resolve_ctx *ctx, tree default_def)
 {
   resolve_lattice_t result = UNDEFINED;
   int arg_num;
-  tree t, symbol, sym_decl = SSA_NAME_IDENTIFIER (default_def);
   struct cgraph_edge *cs;
+  struct call_info *call = get_current_call_info (ctx);
+  tree t, symbol, sym_decl = SSA_NAME_IDENTIFIER (default_def);
   const char *caller_name, *subsymname = IDENTIFIER_POINTER (sym_decl);
 
-  for (arg_num = 0, t = DECL_ARGUMENTS (node->get_fun ()->decl);
+  for (arg_num = 0, t = DECL_ARGUMENTS (call->node->get_fun ()->decl);
        t;
        t = DECL_CHAIN (t), arg_num++)
     if (DECL_NAME (t) == sym_decl)
@@ -378,18 +436,18 @@ parse_default_def (struct cgraph_node *node, tree default_def, struct signature 
 
   /* If no callers or DEFAULT_DEF is not represented in DECL_ARGUMENTS
      we cannot resolve the possible set of symbols */
-  if (!node->callers || !t)
+  if (!call->node->callers || !t)
     return result;
 
-  for (cs = node->callers; cs; cs = cs->next_caller)
+  for (cs = call->node->callers; cs; cs = cs->next_caller)
     {
       resolve_lattice_t parse_result;
-      struct signature subsign = {sign->func_name, arg_num};
-      caller_name = cs->caller->asm_name ();
+      caller_name = call->node->asm_name ();
+      struct signature subsign = {caller_name, arg_num};
 
       /* FIXME recursive cycle is skipped until string are not handled,
 	 otherwise it is incoorect */
-      if (considered_functions.contains (caller_name))
+      if (ctx->considered_functions->contains (caller_name))
 	continue;
 
       if (dump_file)
@@ -397,37 +455,39 @@ parse_default_def (struct cgraph_node *node, tree default_def, struct signature 
 	  fprintf (dump_file, "\tTrack %s symbol obtained from:\n\t\t", subsymname);
 	  print_gimple_stmt (dump_file, cs->call_stmt, 0, 0);
 	}
-      considered_functions.add (caller_name);
+      push_call_info (ctx, cs->caller, cs->call_stmt, &subsign);
+
       symbol = gimple_call_arg (cs->call_stmt, arg_num);
-      parse_result = parse_symbol (cs->caller, cs->call_stmt, symbol, &subsign);
+      parse_result = parse_symbol (ctx, cs->call_stmt, symbol);
       result = resolve_lattice_meet (result, parse_result);
-      considered_functions.remove (caller_name);
+
+      pop_call_info (ctx);
     }
   return result;
 }
 
 static resolve_lattice_t
-parse_symbol (struct cgraph_node *node, gimple *stmt, 
-	      tree symbol, struct signature *sign)
+parse_symbol (struct resolve_ctx *ctx, gimple *stmt, tree symbol)
 {
-  const char *symname;
-  hash_set<const char*, nofree_string_hash> **symbols;
-  gimple* def_stmt;
+  const char *symname, *func_name;
+  string_set **symbols;
+  gimple *def_stmt;
   enum tree_code code = TREE_CODE (symbol);
 
   switch (code)
     {
     case ADDR_EXPR:
-      return parse_symbol (node, stmt, TREE_OPERAND (symbol, 0), sign);
+      return parse_symbol (ctx, stmt, TREE_OPERAND (symbol, 0));
 
     case STRING_CST:
       symname = TREE_STRING_POINTER (symbol);
-      symbols = dynamic_symbols.get (sign->func_name);
+      func_name = ctx->sign->func_name;
+      symbols = ctx->dynamic_symbols->get (func_name);
 
       if (!symbols)
 	{
-	  auto empty_symbols = new hash_set<const char*, nofree_string_hash>;
-	  dynamic_symbols.put (sign->func_name, empty_symbols);
+	  string_set *empty_symbols = new string_set;
+	  ctx->dynamic_symbols->put (func_name, empty_symbols);
 	  symbols = &empty_symbols;
 	}
       (*symbols)->add (symname);
@@ -435,14 +495,14 @@ parse_symbol (struct cgraph_node *node, gimple *stmt,
 
     case SSA_NAME:
       if (SSA_NAME_IS_DEFAULT_DEF (symbol))
-	return parse_default_def (node, symbol, sign);
+	return parse_default_def (ctx, symbol);
 
       def_stmt = SSA_NAME_DEF_STMT (symbol);
-      return parse_gimple_stmt (node, def_stmt, sign); 
+      return parse_gimple_stmt (ctx, def_stmt);
 
     case ARRAY_REF:
     case COMPONENT_REF:
-      return parse_ref (node, stmt, &symbol, sign);
+      return parse_ref (ctx, stmt, &symbol);
 
     case VAR_DECL:
 	{
@@ -452,16 +512,16 @@ parse_symbol (struct cgraph_node *node, gimple *stmt,
 	      varpool_node *sym_node = varpool_node::get (symbol);
 
 	      if (sym_node->ctor_useable_for_folding_p ())
-		return parse_symbol (node, stmt, ctor_for_folding (symbol), sign);
+		return parse_symbol (ctx, stmt, ctor_for_folding (symbol));
 
-	      if (is_read_only (sym_node) && DECL_INITIAL (symbol))
-		return parse_symbol (node, stmt, DECL_INITIAL (symbol), sign);
+	      if (is_read_only (ctx, sym_node) && DECL_INITIAL (symbol))
+		return parse_symbol (ctx, stmt, DECL_INITIAL (symbol));
 
 	      return DYNAMIC;
 	    }
-	  else if (!contains_ref_expr (node, &symbol))
+	  else if (!contains_ref_expr (ctx, &symbol))
 	    {
-	      return collect_values (node, &symbol, sign);
+	      return collect_values (ctx, &symbol);
 	    }
 	  return DYNAMIC;
 	}
@@ -477,7 +537,7 @@ parse_symbol (struct cgraph_node *node, gimple *stmt,
 }
 
 static resolve_lattice_t
-parse_gimple_stmt (struct cgraph_node *node, gimple* stmt, struct signature *sign)
+parse_gimple_stmt (struct resolve_ctx *ctx, gimple *stmt)
 {
   unsigned HOST_WIDE_INT i;
   resolve_lattice_t result = UNDEFINED;
@@ -490,7 +550,7 @@ parse_gimple_stmt (struct cgraph_node *node, gimple* stmt, struct signature *sig
 	  || gimple_assign_unary_nop_p (stmt))
 	{
 	  arg = gimple_assign_rhs1 (stmt);
-	  result = parse_symbol (node, stmt, arg, sign);
+	  result = parse_symbol (ctx, stmt, arg);
 	}
       else
 	result = resolve_lattice_meet (result, DYNAMIC);
@@ -504,7 +564,7 @@ parse_gimple_stmt (struct cgraph_node *node, gimple* stmt, struct signature *sig
       for (i = 0; i < gimple_phi_num_args (stmt); i++)
 	{
 	  arg = gimple_phi_arg_def (stmt, i);
-	  resolve_lattice_t p_res = parse_symbol (node, stmt, arg, sign);
+	  resolve_lattice_t p_res = parse_symbol (ctx, stmt, arg);
 	  result = resolve_lattice_meet (result, p_res);
 	}
       break;
@@ -531,31 +591,37 @@ process_calls (struct cgraph_node *node)
       if (!strcmp (signatures[i].func_name, cs->callee->asm_name ()))
 	{
 	  resolve_lattice_t result;
+	  resolve_ctx ctx;
+	  init_resolve_ctx (&ctx);
 
 	  if (dump_file)
 	    fprintf (dump_file, "\t%s matched to the signature\n", 
 		     cs->callee->asm_name ());
 
-	  considered_functions.add (cs->callee->asm_name ());
+	  ctx.sign = &signatures[i];
+	  push_call_info (&ctx, node, cs->call_stmt, &signatures[i]);
 
 	  symbol = gimple_call_arg (cs->call_stmt, signatures[i].sym_pos);
-	  result = parse_symbol (node, cs->call_stmt, symbol, &signatures[i]);
+	  result = parse_symbol (&ctx, cs->call_stmt, symbol);
 
-	  considered_functions.remove (cs->callee->asm_name ());
-
+	  pop_call_info (&ctx);
 	  if (dump_file)
 	    {
 	      fprintf (dump_file, "\t%s set state:", cs->callee->asm_name ());
 	      dump_lattice_value (dump_file, result);
 	      fprintf (dump_file, "\n");
+
+	      if (ctx.dynamic_symbols->elements ())
+		dump_dynamic_symbol_calls (node->get_fun (), ctx.dynamic_symbols);
 	    }
+	  free_resolve_ctx (&ctx);
 	}
 }
 
 static unsigned int 
 resolve_dlsym_calls (void)
 {
-  struct cgraph_node* node;
+  struct cgraph_node *node;
 
   // Fix the bodies and call graph
   FOR_EACH_FUNCTION_WITH_GIMPLE_BODY (node)
@@ -569,16 +635,6 @@ resolve_dlsym_calls (void)
 	dump_node (node);
 
       process_calls (node);
-
-      if (dump_file && dynamic_symbols.elements ())
-	dump_dynamic_symbol_calls (node->get_fun (), &dynamic_symbols);
-
-      // Free stored data
-      for (call_symbols::iterator it = dynamic_symbols.begin (); 
-	   it != dynamic_symbols.end ();
-	   ++it)
-	delete (*it).second;
-      dynamic_symbols.empty ();
     }
 
   if (dump_file)
@@ -606,12 +662,12 @@ namespace
   class pass_dlsym : public simple_ipa_opt_pass
   {
 public:
-  pass_dlsym(gcc::context *ctxt)
+  pass_dlsym (gcc::context *ctxt)
     : simple_ipa_opt_pass (pass_dlsym_data, ctxt)
     {
     }
 
-  virtual unsigned int execute(function *) { return resolve_dlsym_calls (); }
+  virtual unsigned int execute (function *) { return resolve_dlsym_calls (); }
   }; // class pass_dlsym
 
 } // anon namespace
@@ -659,7 +715,7 @@ plugin_init (plugin_name_args *plugin_info, plugin_gcc_version *version)
 }
 
 void
-dump_dynamic_symbol_calls (function* func, call_symbols *symbols)
+dump_dynamic_symbol_calls (function *func, call_symbols *symbols)
 {
   if (!symbols->elements ())
     {
@@ -668,19 +724,19 @@ dump_dynamic_symbol_calls (function* func, call_symbols *symbols)
     }
 
   fprintf (dump_file, "Function->callee->[symbols]:\n");
-  for (auto it = symbols->begin (); 
+  for (call_symbols::iterator it = symbols->begin ();
        it != symbols->end ();
        ++it)
     {
-      fprintf(dump_file, "\t%s->%s->[", function_name(func),
+      fprintf(dump_file, "\t%s->%s->[", function_name (func),
 	      (*it).first);
-      for (auto it2 = (*it).second->begin (); 
+      for (string_set::iterator it2 = (*it).second->begin ();
 	   it2 != (*it).second->end ();
 	   ++it2)
 	{
 	  if (it2 != (*it).second->begin ())
 	    fprintf (dump_file, ",");
-	  fprintf (dump_file, "%s", *it2); 
+	  fprintf (dump_file, "%s", *it2);
 	}
       fprintf(dump_file, "]\n");
     }
@@ -716,3 +772,4 @@ dump_lattice_value (FILE *outf, resolve_lattice_t val)
       gcc_unreachable ();
     }
 }
+
