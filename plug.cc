@@ -54,8 +54,10 @@ struct call_info
 /* Describes the context of dlsym usage */
 struct resolve_ctx
 {
-  /* Initial sinature of dlsym */
-  struct signature *sign;
+  /* Initial signature of dlsym */
+  struct signature *base_sign;
+  /* Call location */
+  location_t loc;
   /* Hash set of considered functions
      for detecting cycles in cgraph */
   string_set *considered_functions;
@@ -88,7 +90,9 @@ free_resolve_ctx (struct resolve_ctx *ctx)
 static struct call_info *
 get_current_call_info (resolve_ctx *ctx)
 {
-  return &ctx->calls_chain.last ();
+  if (ctx->calls_chain.length ())
+    return &ctx->calls_chain.last ();
+  return NULL;
 }
 
 static void
@@ -114,7 +118,7 @@ parse_symbol (struct resolve_ctx *ctx, gimple *stmt, tree symbol);
 static resolve_lattice_t
 parse_gimple_stmt (struct resolve_ctx *ctx, gimple *stmt);
 void
-dump_dynamic_symbol_calls (function *func, call_symbols *symbols);
+dump_dynamic_symbol_calls (struct resolve_ctx *ctx);
 void
 dump_node (cgraph_node *node);
 void
@@ -481,7 +485,7 @@ parse_symbol (struct resolve_ctx *ctx, gimple *stmt, tree symbol)
 
     case STRING_CST:
       symname = TREE_STRING_POINTER (symbol);
-      func_name = ctx->sign->func_name;
+      func_name = ctx->base_sign->func_name;
       symbols = ctx->dynamic_symbols->get (func_name);
 
       if (!symbols)
@@ -598,22 +602,23 @@ process_calls (struct cgraph_node *node)
 	    fprintf (dump_file, "\t%s matched to the signature\n", 
 		     cs->callee->asm_name ());
 
-	  ctx.sign = &signatures[i];
+	  ctx.base_sign = &signatures[i];
+	  ctx.loc = gimple_location (cs->call_stmt);
 	  push_call_info (&ctx, node, cs->call_stmt, &signatures[i]);
 
 	  symbol = gimple_call_arg (cs->call_stmt, signatures[i].sym_pos);
 	  result = parse_symbol (&ctx, cs->call_stmt, symbol);
 
-	  pop_call_info (&ctx);
 	  if (dump_file)
 	    {
 	      fprintf (dump_file, "\t%s set state:", cs->callee->asm_name ());
 	      dump_lattice_value (dump_file, result);
 	      fprintf (dump_file, "\n");
-
 	      if (ctx.dynamic_symbols->elements ())
-		dump_dynamic_symbol_calls (node->get_fun (), ctx.dynamic_symbols);
+		dump_dynamic_symbol_calls (&ctx);
 	    }
+
+	  pop_call_info (&ctx);
 	  free_resolve_ctx (&ctx);
 	}
 }
@@ -715,21 +720,29 @@ plugin_init (plugin_name_args *plugin_info, plugin_gcc_version *version)
 }
 
 void
-dump_dynamic_symbol_calls (function *func, call_symbols *symbols)
+dump_dynamic_symbol_calls (struct resolve_ctx *ctx)
 {
-  if (!symbols->elements ())
+  if (!ctx->dynamic_symbols->elements ())
     {
       fprintf(dump_file, "\n\n");
       return;
     }
 
-  fprintf (dump_file, "Function->callee->[symbols]:\n");
-  for (call_symbols::iterator it = symbols->begin ();
-       it != symbols->end ();
+  fprintf (dump_file, "File:Line:Function->Callee->[Symbols]:\n");
+  for (call_symbols::iterator it = ctx->dynamic_symbols->begin ();
+       it != ctx->dynamic_symbols->end ();
        ++it)
     {
-      fprintf(dump_file, "\t%s->%s->[", function_name (func),
-	      (*it).first);
+      const char *func_name;
+      struct call_info *first_call = get_current_call_info (ctx);
+      if (first_call)
+	func_name = function_name (first_call->node->get_fun ());
+      else
+	func_name = "";
+
+      fprintf(dump_file, "\t%s:%d:%s->%s->[",
+	      LOCATION_FILE (ctx->loc), LOCATION_LINE (ctx->loc),
+	      func_name, (*it).first);
       for (string_set::iterator it2 = (*it).second->begin ();
 	   it2 != (*it).second->end ();
 	   ++it2)
