@@ -418,15 +418,25 @@ parse_ref (struct resolve_ctx *ctx, gimple *stmt, tree *expr_p)
   /* Cannot find a constructor of the decl */
   if (ctor == NULL || ctor == error_mark_node)
     {
+      resolve_lattice_t result = UNDEFINED;
       /* Global var */
       if (TREE_STATIC (base) || DECL_EXTERNAL (base) || in_lto_p)
 	{
-	  if (is_read_only (ctx, varpool_node::get(base)) && DECL_INITIAL (base))
-	    return parse_ref_1 (ctx, stmt, DECL_INITIAL (base),
-				&expr_stack, expr_stack.length () - 1);
+	  if (!is_read_only (ctx, varpool_node::get (base)))
+	    result = resolve_lattice_meet (result, DYNAMIC);
+
+	  tree init = DECL_INITIAL (base);
+	  if (init)
+	    {
+	      resolve_lattice_t parse_r;
+	      parse_r = parse_ref_1 (ctx, stmt, DECL_INITIAL (base),
+				     &expr_stack, expr_stack.length () - 1);
+	      result = resolve_lattice_meet (result, parse_r);
+	    }
+	  /* NOTE: do not collect values for COMPONENT_REF */
+	  return result;
 	}
 
-      resolve_lattice_t result = UNDEFINED;
       if (contains_ref_expr (ctx, expr_p))
 	result = resolve_lattice_meet (result, DYNAMIC);
 
