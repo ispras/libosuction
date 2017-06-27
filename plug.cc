@@ -417,10 +417,11 @@ parse_ref (struct resolve_ctx *ctx, gimple *stmt, tree *expr_p)
 				&expr_stack, expr_stack.length () - 1);
 	}
 
+      resolve_lattice_t result = UNDEFINED;
       if (contains_ref_expr (ctx, expr_p))
-	return DYNAMIC;
+	result = resolve_lattice_meet (result, DYNAMIC);
 
-      return collect_values (ctx, expr_p);
+      return resolve_lattice_meet (result, collect_values (ctx, expr_p));
     }
   return parse_ref_1 (ctx, stmt, ctor, &expr_stack, expr_stack.length () - 1);
 }
@@ -527,11 +528,13 @@ parse_symbol (struct resolve_ctx *ctx, gimple *stmt, tree symbol)
 
 	      return DYNAMIC;
 	    }
-	  else if (!contains_ref_expr (ctx, &symbol))
-	    {
-	      return collect_values (ctx, &symbol);
-	    }
-	  return DYNAMIC;
+
+	  resolve_lattice_t result = UNDEFINED;
+
+	  if (contains_ref_expr (ctx, &symbol))
+	    result = resolve_lattice_meet (result, DYNAMIC);
+
+	  return resolve_lattice_meet (result, collect_values (ctx, &symbol));
 	}
 
     case INTEGER_CST:

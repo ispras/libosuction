@@ -2,9 +2,6 @@
 
 static const char *mn = "zoo";
 
-
-
-
 int main (int argc, char **argv)
 {
   void *handle;
@@ -12,10 +9,10 @@ int main (int argc, char **argv)
   int i = 0;
   char ** fake;
 
-  char * symbols[] = { 
+  char * symbols[] = {
       "foo",
       "bar",
-  };  
+  };
 
   fake = &symbols[1];
   handle = dlopen("./testlib.so", RTLD_NOW);
@@ -24,7 +21,7 @@ int main (int argc, char **argv)
   for (i = 0; i < 2; i++) {
       my_dyn_func = (void (*)(int)) dlsym (handle, symbols[i]);
       my_dyn_func(2);
-  }   
+  }
 
   return 0;
 }
