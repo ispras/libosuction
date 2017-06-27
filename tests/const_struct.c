@@ -5,7 +5,6 @@ struct extra
   const char *fun_name;
 };
 
-
 static struct extra st1 = {"bar"};
 static struct extra st2 = {"baz"};
 
@@ -20,7 +19,7 @@ int main (int argc, char **argv)
     str = st1.fun_name;
   else
     str = st2.fun_name;
-  my_dyn_func = (void (*)(int)) dlsym (handle, st1.fun_name);
+  my_dyn_func = (void (*)(int)) dlsym (handle, str);
   my_dyn_func(2);
 
   return 0;

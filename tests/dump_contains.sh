@@ -4,7 +4,7 @@ CXX="$GCCDIR/x86_64-pc-linux-gnu-g++"
 CC="$GCCDIR/x86_64-pc-linux-gnu-gcc"
 CXXFLAGS+="-O0 -ggdb3 -fno-exceptions -fno-rtti -std=c++11 -fpic -Wall"
 PLUGIN=../libplug.so 
-PLUGIN_ARG="-fplugin-arg-libplug-sign-dlsym=1"
+PLUGIN_ARG="-fplugin-arg-libplug-sign-dlsym=1 -fplugin-arg-libplug-out=dlsym.res"
 
 
 function dump_contains() {
@@ -80,7 +80,7 @@ echo $(simple_test const_array7.c "dlsym matched to the signature" 1 "Signature"
 echo $(simple_test const_array7.c "dlsym set state:DYNAMIC" 1 "DYNAMIC")
 echo $(simple_test const_struct.c "dlsym matched to the signature" 1 "Signature"  )
 echo $(simple_test const_struct.c "dlsym set state:CONSTANT" 1 "CONSTANT")
-echo $(simple_test const_struct.c "main->dlsym->\[bar\]" 1 "Symbol Set" )
+echo $(simple_test const_struct.c "main->dlsym->\[(baz,bar)|(baz,bar)\]" 1 "Symbol Set" )
 echo $(simple_test conditional.c "dlsym matched to the signature" 1 "Signature"  )
 echo $(simple_test conditional.c "dlsym set state:CONSTANT" 1 "CONSTANT" )
 echo $(simple_test conditional.c "main->dlsym->\[(baz,bar)|(bar,baz)\]" 1 "Symbol Set" )
@@ -96,20 +96,16 @@ echo $(simple_test func_call.c "dlsym set state:DYNAMIC" 1 "DYNAMIC")
 echo $(simple_test func_macro.c "dlsym matched to the signature" 1 "Signature"  )
 echo $(simple_test func_macro.c "dlsym set state:CONSTANT" 1 "CONSTANT")
 echo $(simple_test func_macro.c "foo->dlsym->\[foo\]" 1 "Symbol Set" )
-# TODO Skipped global_handler.c
 echo $(simple_test global_var.c "dlsym matched to the signature" 1 "Signature"  )
 echo $(simple_test global_var.c "dlsym set state:CONSTANT" 1 "CONSTANT")
 echo $(simple_test global_var.c "main->dlsym->\[foo\]" 1 "Symbol Set" )
-# TODO global_struct.c
 echo $(simple_test local_array.c "dlsym matched to the signature" 1 "Signature"  )
 echo $(simple_test local_array.c "dlsym set state:CONSTANT" 1 "CONSTANT" )
 echo $(simple_test local_array.c "main->dlsym->\[bar\]" 1 "Symbol Set" )
-# TODO local.c (extern variable) + local_d.c + local.h
 echo $(simple_test macro_passing.c "dlsym matched to the signature" 2 "Signature"  )
 echo $(simple_test macro_passing.c "dlsym set state:CONSTANT" 2 "CONSTANT" )
 echo $(simple_test macro_passing.c "main->dlsym->\[foo\]" 1 "Symbol Set" )
 echo $(simple_test macro_passing.c "main->dlsym->\[bar\]" 1 "Symbol Set" )
-# TODO phi_rec.c
 echo $(simple_test proxy.c "dlsym matched to the signature" 2 "Signature"  )
 echo $(simple_test proxy.c "dlsym set state:CONSTANT" 1 "CONSTANT" )
 echo $(simple_test proxy.c "main->dlsym->\[bar\]" 1 "Symbol Set" )
