@@ -112,6 +112,8 @@ pop_call_info (resolve_ctx *ctx)
 }
 
 static vec<struct signature> signatures;
+static const char *output_file_name = "dlsym.out";
+static FILE *output;
 
 static resolve_lattice_t
 parse_symbol (struct resolve_ctx *ctx, gimple *stmt, tree symbol);
@@ -123,6 +125,8 @@ void
 dump_node (cgraph_node *node);
 void
 dump_lattice_value (FILE *outf, resolve_lattice_t val);
+void
+write_dynamic_symbol_calls (struct resolve_ctx *ctx, resolve_lattice_t type);
 
 /* Compute the meet operator between VAL1 and VAL2:
    UNDEFINED M UNDEFINED          = UNDEFINED
@@ -550,7 +554,7 @@ parse_gimple_stmt (struct resolve_ctx *ctx, gimple *stmt)
   switch (gimple_code (stmt))
     {
     case GIMPLE_ASSIGN:
-      if (gimple_assign_single_p (stmt) 
+      if (gimple_assign_single_p (stmt)
 	  || gimple_assign_unary_nop_p (stmt))
 	{
 	  arg = gimple_assign_rhs1 (stmt);
@@ -561,7 +565,7 @@ parse_gimple_stmt (struct resolve_ctx *ctx, gimple *stmt)
       break;
 
     case GIMPLE_PHI:
-      /*TODO phi cycles, currently unavalable because of absence of 
+      /*TODO phi cycles are currently unavalable because of absence of
 	string changes handling */
       if (dump_file)
 	fprintf (dump_file, "\tPHI statement def: iterate each of them\n");
@@ -580,7 +584,7 @@ parse_gimple_stmt (struct resolve_ctx *ctx, gimple *stmt)
   return result;
 }
 
-static void 
+static void
 process_calls (struct cgraph_node *node)
 {
   unsigned HOST_WIDE_INT i;
@@ -599,7 +603,7 @@ process_calls (struct cgraph_node *node)
 	  init_resolve_ctx (&ctx);
 
 	  if (dump_file)
-	    fprintf (dump_file, "\t%s matched to the signature\n", 
+	    fprintf (dump_file, "\t%s matched to the signature\n",
 		     cs->callee->asm_name ());
 
 	  ctx.base_sign = &signatures[i];
@@ -617,16 +621,17 @@ process_calls (struct cgraph_node *node)
 	      if (ctx.dynamic_symbols->elements ())
 		dump_dynamic_symbol_calls (&ctx);
 	    }
-
+	  write_dynamic_symbol_calls (&ctx, result);
 	  pop_call_info (&ctx);
 	  free_resolve_ctx (&ctx);
 	}
 }
 
-static unsigned int 
+static unsigned int
 resolve_dlsym_calls (void)
 {
   struct cgraph_node *node;
+  output = fopen (output_file_name, "w");
 
   // Fix the bodies and call graph
   FOR_EACH_FUNCTION_WITH_GIMPLE_BODY (node)
@@ -642,6 +647,7 @@ resolve_dlsym_calls (void)
       process_calls (node);
     }
 
+  fclose (output);
   if (dump_file)
     fprintf (dump_file, "Dynamic symbol resolving pass ended\n\n");
   return 0;
@@ -651,7 +657,7 @@ resolve_dlsym_calls (void)
 
 namespace
 {
-  const pass_data pass_dlsym_data = 
+  const pass_data pass_dlsym_data =
     {
       SIMPLE_IPA_PASS,
       "dlsym",			/* name */
@@ -682,6 +688,9 @@ parse_argument (plugin_argument *arg)
 {
   const char *arg_key = arg->key;
   const char *arg_value = arg->value;
+  /* Read dynamic caller signature. For instance:
+     -fplugin-libplug-sign-dlsym=1
+     means that name of caller is 'dlsym' and symbol is an argument no. 1. */
   if (arg_key[0] == 's' && arg_key[1] == 'i'
       && arg_key[2] == 'g' && arg_key[3] == 'n'
       && arg_key[4] == '-')
@@ -689,6 +698,13 @@ parse_argument (plugin_argument *arg)
       struct signature initial = { &arg_key[5], atoi (arg_value) };
       signatures.safe_push (initial);
     }
+
+  /* Read the name of output file, for instance:
+     -fplugin-libplug-out=dlsym.out
+     the name of output file would be 'dlsym.out'. */
+  if (arg_key[0] == 'o' && arg_key[1] == 'u'
+      && arg_key[2] == 't' && arg_key[3] == '\0')
+    output_file_name = arg_value;
 }
 
 void static
@@ -703,7 +719,7 @@ int
 plugin_init (plugin_name_args *plugin_info, plugin_gcc_version *version)
 {
   if (!plugin_default_version_check (&gcc_version ,version))
-    return 1; 
+    return 1;
 
   parse_arguments (plugin_info->argc, plugin_info->argv);
 
@@ -717,6 +733,40 @@ plugin_init (plugin_name_args *plugin_info, plugin_gcc_version *version)
 		     PLUGIN_PASS_MANAGER_SETUP, NULL,
 		     &pass_info);
   return 0;
+}
+
+void
+write_dynamic_symbol_calls (struct resolve_ctx *ctx, resolve_lattice_t type)
+{
+  /* file_name:line:function:type:symbols */
+  if (ctx->dynamic_symbols->elements())
+    {
+      for (call_symbols::iterator it = ctx->dynamic_symbols->begin ();
+	   it != ctx->dynamic_symbols->end ();
+	   ++it)
+	{
+	  fprintf (output, "%s:%d:%s:", LOCATION_FILE (ctx->loc),
+		   LOCATION_LINE (ctx->loc), (*it).first);
+	  dump_lattice_value (output, type);
+	  fprintf (output, ":");
+	  for (string_set::iterator it2 = (*it).second->begin ();
+	       it2 != (*it).second->end ();
+	       ++it2)
+	    {
+	      if (it2 != (*it).second->begin ())
+		fprintf (output, ",");
+	      fprintf (output, "%s", *it2);
+	    }
+	}
+    }
+  else
+    {
+      fprintf (output, "%s:%d:%s:", LOCATION_FILE (ctx->loc),
+	       LOCATION_LINE (ctx->loc), ctx->base_sign->func_name);
+      dump_lattice_value (output, type);
+      fprintf (output, ":");
+    }
+  fprintf(output, "\n");
 }
 
 void
@@ -756,7 +806,7 @@ dump_dynamic_symbol_calls (struct resolve_ctx *ctx)
   fprintf(dump_file, "\n\n");
 }
 
-void 
+void
 dump_node (cgraph_node *node)
 {
   fprintf (dump_file, "Call graph of a node:\n");
