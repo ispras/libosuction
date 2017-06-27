@@ -240,8 +240,23 @@ unwind_expression_to_stack (tree *expr_p, auto_vec<tree, 10> *stack)
     }
 }
 
+/* Collect values from assignment statements for global variable */
 static resolve_lattice_t
-collect_values (struct resolve_ctx *ctx, tree *expr_p)
+collect_values_global (struct resolve_ctx *ctx, struct varpool_node *node)
+{
+  unsigned i;
+  ipa_ref *ref = NULL;
+  resolve_lattice_t result = UNDEFINED;
+  for (i = 0; node->iterate_referring (i, ref); i++)
+    if (ref->use == IPA_REF_STORE)
+      result = resolve_lattice_meet (result, parse_gimple_stmt (ctx, ref->stmt));
+  return result;
+}
+
+/* Collect values from assignment statements in GET_CURRENT_CALL_INFO (CTX)
+   for local variable */
+static resolve_lattice_t
+collect_values_local (struct resolve_ctx *ctx, tree *expr_p)
 {
   resolve_lattice_t result = UNDEFINED;
   basic_block bb;
@@ -421,7 +436,7 @@ parse_ref (struct resolve_ctx *ctx, gimple *stmt, tree *expr_p)
       if (contains_ref_expr (ctx, expr_p))
 	result = resolve_lattice_meet (result, DYNAMIC);
 
-      return resolve_lattice_meet (result, collect_values (ctx, expr_p));
+      return resolve_lattice_meet (result, collect_values_local (ctx, expr_p));
     }
   return parse_ref_1 (ctx, stmt, ctor, &expr_stack, expr_stack.length () - 1);
 }
@@ -515,6 +530,7 @@ parse_symbol (struct resolve_ctx *ctx, gimple *stmt, tree symbol)
 
     case VAR_DECL:
 	{
+	  resolve_lattice_t result = UNDEFINED;
 	  /* Does a variable have a node in symtable  */
 	  if (TREE_STATIC (symbol) || DECL_EXTERNAL (symbol) || in_lto_p)
 	    {
@@ -523,18 +539,24 @@ parse_symbol (struct resolve_ctx *ctx, gimple *stmt, tree symbol)
 	      if (sym_node->ctor_useable_for_folding_p ())
 		return parse_symbol (ctx, stmt, ctor_for_folding (symbol));
 
-	      if (is_read_only (ctx, sym_node) && DECL_INITIAL (symbol))
-		return parse_symbol (ctx, stmt, DECL_INITIAL (symbol));
+	      if (!is_read_only (ctx, sym_node))
+		result = resolve_lattice_meet (result, DYNAMIC);
 
-	      return DYNAMIC;
+	      tree init = DECL_INITIAL (symbol);
+	      if (init)
+		{
+		  resolve_lattice_t parse_r = parse_symbol (ctx, stmt, init);
+		  result = resolve_lattice_meet (result, parse_r);
+		}
+
+	      return resolve_lattice_meet (result,
+					   collect_values_global (ctx, sym_node));
 	    }
-
-	  resolve_lattice_t result = UNDEFINED;
 
 	  if (contains_ref_expr (ctx, &symbol))
 	    result = resolve_lattice_meet (result, DYNAMIC);
 
-	  return resolve_lattice_meet (result, collect_values (ctx, &symbol));
+	  return resolve_lattice_meet (result, collect_values_local (ctx, &symbol));
 	}
 
     case INTEGER_CST:
