@@ -21,7 +21,6 @@
 #include "cgraph.h"
 
 typedef hash_set<const char *, nofree_string_hash> string_set;
-typedef hash_map<const char *, string_set *> call_symbols;
 
 int plugin_is_GPL_compatible;
 
@@ -61,9 +60,8 @@ struct resolve_ctx
   /* Hash set of considered functions
      for detecting cycles in cgraph */
   string_set *considered_functions;
-  /* Hash map of signature names on
-     hash set of possible symbols */
-  call_symbols *dynamic_symbols;
+  /* Hash set of possible symbols */
+  string_set *symbols;
   /* Chain of calls (wrappers) that pass symbol through body.
      In other words, callstack. */
   vec<call_info> calls_chain;
@@ -73,18 +71,14 @@ static void
 init_resolve_ctx (struct resolve_ctx *ctx)
 {
   ctx->considered_functions = new string_set;
-  ctx->dynamic_symbols = new call_symbols;
+  ctx->symbols = new string_set;
 }
 
 static void
 free_resolve_ctx (struct resolve_ctx *ctx)
 {
   free (ctx->considered_functions);
-  for (call_symbols::iterator it = ctx->dynamic_symbols->begin ();
-       it != ctx->dynamic_symbols->end ();
-       ++it)
-    delete (*it).second;
-  free(ctx->dynamic_symbols);
+  free (ctx->symbols);
 }
 
 static struct call_info *
@@ -493,8 +487,6 @@ parse_default_def (struct resolve_ctx *ctx, tree default_def)
 static resolve_lattice_t
 parse_symbol (struct resolve_ctx *ctx, gimple *stmt, tree symbol)
 {
-  const char *symname, *func_name;
-  string_set **symbols;
   gimple *def_stmt;
   enum tree_code code = TREE_CODE (symbol);
 
@@ -504,17 +496,7 @@ parse_symbol (struct resolve_ctx *ctx, gimple *stmt, tree symbol)
       return parse_symbol (ctx, stmt, TREE_OPERAND (symbol, 0));
 
     case STRING_CST:
-      symname = TREE_STRING_POINTER (symbol);
-      func_name = ctx->base_sign->func_name;
-      symbols = ctx->dynamic_symbols->get (func_name);
-
-      if (!symbols)
-	{
-	  string_set *empty_symbols = new string_set;
-	  ctx->dynamic_symbols->put (func_name, empty_symbols);
-	  symbols = &empty_symbols;
-	}
-      (*symbols)->add (symname);
+      ctx->symbols->add (TREE_STRING_POINTER (symbol));
       return CONSTANT;
 
     case SSA_NAME:
@@ -643,7 +625,7 @@ process_calls (struct cgraph_node *node)
 	      fprintf (dump_file, "\t%s set state:", cs->callee->asm_name ());
 	      dump_lattice_value (dump_file, result);
 	      fprintf (dump_file, "\n");
-	      if (ctx.dynamic_symbols->elements ())
+	      if (ctx.symbols->elements ())
 		dump_dynamic_symbol_calls (&ctx);
 	    }
 	  write_dynamic_symbol_calls (&ctx, result);
@@ -764,24 +746,19 @@ void
 write_dynamic_symbol_calls (struct resolve_ctx *ctx, resolve_lattice_t type)
 {
   /* file_name:line:function:type:symbols */
-  if (ctx->dynamic_symbols->elements())
+  if (ctx->symbols->elements())
     {
-      for (call_symbols::iterator it = ctx->dynamic_symbols->begin ();
-	   it != ctx->dynamic_symbols->end ();
+      fprintf (output, "%s:%d:%s:", LOCATION_FILE (ctx->loc),
+	       LOCATION_LINE (ctx->loc), ctx->base_sign->func_name);
+      dump_lattice_value (output, type);
+      fprintf (output, ":");
+      for (string_set::iterator it = ctx->symbols->begin ();
+	   it != ctx->symbols->end ();
 	   ++it)
 	{
-	  fprintf (output, "%s:%d:%s:", LOCATION_FILE (ctx->loc),
-		   LOCATION_LINE (ctx->loc), (*it).first);
-	  dump_lattice_value (output, type);
-	  fprintf (output, ":");
-	  for (string_set::iterator it2 = (*it).second->begin ();
-	       it2 != (*it).second->end ();
-	       ++it2)
-	    {
-	      if (it2 != (*it).second->begin ())
-		fprintf (output, ",");
-	      fprintf (output, "%s", *it2);
-	    }
+	  if (it != ctx->symbols->begin ())
+	    fprintf (output, ",");
+	  fprintf (output, "%s", *it);
 	}
     }
   else
@@ -797,38 +774,32 @@ write_dynamic_symbol_calls (struct resolve_ctx *ctx, resolve_lattice_t type)
 void
 dump_dynamic_symbol_calls (struct resolve_ctx *ctx)
 {
-  if (!ctx->dynamic_symbols->elements ())
+  if (!ctx->symbols->elements ())
     {
       fprintf(dump_file, "\n\n");
       return;
     }
 
   fprintf (dump_file, "File:Line:Function->Callee->[Symbols]:\n");
-  for (call_symbols::iterator it = ctx->dynamic_symbols->begin ();
-       it != ctx->dynamic_symbols->end ();
+  const char *func_name;
+  struct call_info *first_call = get_current_call_info (ctx);
+  if (first_call)
+    func_name = function_name (first_call->node->get_fun ());
+  else
+    func_name = "";
+
+  fprintf(dump_file, "\t%s:%d:%s->%s->[",
+	  LOCATION_FILE (ctx->loc), LOCATION_LINE (ctx->loc),
+	  func_name, ctx->base_sign->func_name);
+  for (string_set::iterator it = ctx->symbols->begin ();
+       it != ctx->symbols->end ();
        ++it)
     {
-      const char *func_name;
-      struct call_info *first_call = get_current_call_info (ctx);
-      if (first_call)
-	func_name = function_name (first_call->node->get_fun ());
-      else
-	func_name = "";
-
-      fprintf(dump_file, "\t%s:%d:%s->%s->[",
-	      LOCATION_FILE (ctx->loc), LOCATION_LINE (ctx->loc),
-	      func_name, (*it).first);
-      for (string_set::iterator it2 = (*it).second->begin ();
-	   it2 != (*it).second->end ();
-	   ++it2)
-	{
-	  if (it2 != (*it).second->begin ())
-	    fprintf (dump_file, ",");
-	  fprintf (dump_file, "%s", *it2);
-	}
-      fprintf(dump_file, "]\n");
+      if (it != ctx->symbols->begin ())
+	fprintf (dump_file, ",");
+      fprintf (dump_file, "%s", *it);
     }
-  fprintf(dump_file, "\n\n");
+  fprintf(dump_file, "]\n\n");
 }
 
 void
