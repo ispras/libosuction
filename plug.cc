@@ -108,7 +108,7 @@ pop_call_info (resolve_ctx *ctx)
 }
 
 static vec<struct signature> signatures;
-static const char *output_file_name = "dlsym.out";
+static const char *output_file_name = NULL;
 static FILE *output;
 
 static resolve_lattice_t
@@ -650,6 +650,18 @@ static unsigned int
 resolve_dlsym_calls (void)
 {
   struct cgraph_node *node;
+
+  if (output_file_name == NULL)
+    {
+      int len = strlen (dump_base_name);
+      char *dumpname = XNEWVEC (char, len + 6);
+
+      memcpy (dumpname, dump_base_name, len + 1);
+      strip_off_ending (dumpname, len);
+      strcat (dumpname, ".dlsym");
+      output_file_name = dumpname;
+    }
+
   output = fopen (output_file_name, "w");
 
   // Fix the bodies and call graph
