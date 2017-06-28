@@ -64,7 +64,7 @@ struct resolve_ctx
   string_set *symbols;
   /* Chain of calls (wrappers) that pass symbol through body.
      In other words, callstack. */
-  vec<call_info> calls_chain;
+  vec<call_info> *calls_chain;
 };
 
 static void
@@ -72,6 +72,7 @@ init_resolve_ctx (struct resolve_ctx *ctx)
 {
   ctx->considered_functions = new string_set;
   ctx->symbols = new string_set;
+  ctx->calls_chain = new vec<call_info> ();
 }
 
 static void
@@ -79,13 +80,14 @@ free_resolve_ctx (struct resolve_ctx *ctx)
 {
   free (ctx->considered_functions);
   free (ctx->symbols);
+  free (ctx->calls_chain);
 }
 
 static struct call_info *
 get_current_call_info (resolve_ctx *ctx)
 {
-  if (ctx->calls_chain.length ())
-    return &ctx->calls_chain.last ();
+  if (ctx->calls_chain->length ())
+    return &ctx->calls_chain->last ();
   return NULL;
 }
 
@@ -95,13 +97,13 @@ push_call_info (struct resolve_ctx *ctx, struct cgraph_node *node,
 {
   struct call_info call = { node, stmt, sign };
   ctx->considered_functions->add (sign->func_name);
-  ctx->calls_chain.safe_push (call);
+  ctx->calls_chain->safe_push (call);
 }
 
 static void
 pop_call_info (resolve_ctx *ctx)
 {
-  struct call_info call = ctx->calls_chain.pop ();
+  struct call_info call = ctx->calls_chain->pop ();
   ctx->considered_functions->remove (call.sign->func_name);
 }
 
@@ -755,11 +757,14 @@ plugin_init (plugin_name_args *plugin_info, plugin_gcc_version *version)
 void
 write_dynamic_symbol_calls (struct resolve_ctx *ctx, resolve_lattice_t type)
 {
-  /* file_name:line:function:type:symbols */
+  struct call_info *caller = get_current_call_info (ctx);
+  gcc_assert (caller);
+  /* file_name:line:caller:function:type:symbols */
   if (ctx->symbols->elements())
     {
-      fprintf (output, "%s:%d:%s:", LOCATION_FILE (ctx->loc),
-	       LOCATION_LINE (ctx->loc), ctx->base_sign->func_name);
+      fprintf (output, "%s:%d:%s:%s:", LOCATION_FILE (ctx->loc),
+	       LOCATION_LINE (ctx->loc), caller->node->asm_name (),
+	       ctx->base_sign->func_name);
       dump_lattice_value (output, type);
       fprintf (output, ":");
       for (string_set::iterator it = ctx->symbols->begin ();
@@ -773,8 +778,9 @@ write_dynamic_symbol_calls (struct resolve_ctx *ctx, resolve_lattice_t type)
     }
   else
     {
-      fprintf (output, "%s:%d:%s:", LOCATION_FILE (ctx->loc),
-	       LOCATION_LINE (ctx->loc), ctx->base_sign->func_name);
+      fprintf (output, "%s:%d:%s:%s:", LOCATION_FILE (ctx->loc),
+	       LOCATION_LINE (ctx->loc), caller->node->asm_name (),
+	       ctx->base_sign->func_name);
       dump_lattice_value (output, type);
       fprintf (output, ":");
     }
