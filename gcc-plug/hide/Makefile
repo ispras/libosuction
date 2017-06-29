@@ -14,10 +14,13 @@ $(PLUGIN): plug.o
 test: $(PLUGIN)
 	$(CC) -O1 -fplugin=./$(PLUGIN) test.c
 
-test-libprivate.so: $(PLUGIN) libpriv1.c libpriv2.c libpriv1.h vis.txt
+check: test-libpriv.so
+	$(shell ./check-bin.sh)
+
+test-libpriv.so: $(PLUGIN) libpriv1.c libpriv2.c libpriv1.h vis.txt
 	$(CC) -fplugin=./$(PLUGIN) -fplugin-arg-$(PLUGNAME)-fname=vis.txt -c -fpic -O2 -flto libpriv1.c -o libpriv1.o
 	$(CC) -fplugin=./$(PLUGIN) -fplugin-arg-$(PLUGNAME)-fname=vis.txt -c -fpic -O2 -flto libpriv2.c -o libpriv2.o
-	$(CC) -shared libpriv1.o libpriv2.o -o test-libprivate.so
+	$(CC) -shared libpriv1.o libpriv2.o -o $@
 
 clean:
 	-rm -f $(PLUGIN) plug.o a.out
