@@ -16,6 +16,8 @@
 
 int plugin_is_GPL_compatible;
 
+extern const char *user_label_prefix;
+
 namespace {
 
 const pass_data pass_data_hide_globally_invisible =
@@ -89,6 +91,41 @@ decl_name (const symtab_node *node)
   return IDENTIFIER_POINTER (DECL_ASSEMBLER_NAME (node->decl));
 }
 
+/* In newer versions of gcc there is symbol_table::assembler_names_equal_p which
+   almost does it.  However for older versions reusing the existing code is not
+   worth the hustle.  */
+static int
+declname_compar (const char *name1, const char *name2)
+{
+  int cmp1;
+  if (name1[0] == '*')
+    {
+      size_t ulp_len = strlen (user_label_prefix);
+
+      name1 ++;
+
+      if (ulp_len == 0)
+	;
+      else if ((cmp1 = strncmp (name1, user_label_prefix, ulp_len)) == 0)
+	name1 += ulp_len;
+      else
+	return cmp1;
+    }
+  if (name2[0] == '*')
+    {
+      size_t ulp_len = strlen (user_label_prefix);
+
+      name2 ++;
+
+      if (ulp_len == 0)
+	;
+      else if ((cmp1 = strncmp (name2, user_label_prefix, ulp_len)) == 0)
+	name2 += ulp_len;
+      else
+	return cmp1;
+    }
+  return strcmp (name1, name2);
+}
 
 bool
 pass_hide_globally_invisible::no_external_uses_p (symtab_node *node)
@@ -184,10 +221,10 @@ pass_hide_globally_invisible::execute (_EXECUTE_ARGS)
   symtab_node *node;
   bool comdat_priv_failed_p;
 
-  static_nodes = splay_tree_new ((splay_tree_compare_fn) strcmp,
+  static_nodes = splay_tree_new ((splay_tree_compare_fn) declname_compar,
 				 (splay_tree_delete_key_fn) free,
 				 0);
-  libprivate_nodes = splay_tree_new ((splay_tree_compare_fn) strcmp,
+  libprivate_nodes = splay_tree_new ((splay_tree_compare_fn) declname_compar,
 				     (splay_tree_delete_key_fn) free,
 				     0);
   read_vis_changes ();
