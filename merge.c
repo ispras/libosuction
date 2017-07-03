@@ -36,6 +36,7 @@ struct dso {
 		int nsymdeps;
 		long long size;
 		const char *name;
+		struct obj *objptr;
 		struct scn **scndeps;
 		struct sym **symdeps;
 	} *scn;
@@ -179,6 +180,7 @@ input(struct dso *dso, FILE *f)
 		o->scns = s;
 		for (; s < o->scns + o->nscn; s++) {
 			fscanf(f, "%d %lld %ms %*[^\n]", &s->used, &s->size, &s->name);
+			s->objptr = o;
 			/* XXX c++ exceptions hack */
 			if (!s->used)
 				s->used = is_implicitly_used_section(s->name);
@@ -391,6 +393,14 @@ static void dfs(struct node *n)
 			dfs(o);
 	}
 }
+static void printsym(struct sym *sym)
+{
+	if (sym->weak == 'C') return;
+	struct node *n = sym->defscn;
+	const char *t, *objname = ((struct scn *)n)->objptr->path;
+	if ((t = strrchr(objname, '/'))) objname = t+1;
+	printf("%s:%s\n", objname, sym->name);
+}
 static void mark(struct dso *dsos, int n)
 {
 	for (struct dso *dso = dsos; dso < dsos + n; dso++) {
@@ -418,10 +428,10 @@ static void mark(struct dso *dsos, int n)
 		}
 	printf("%d %d\n", nloc, nhid);
 	for (; nloc; nloc--, locstack = (void *)locstack->n.stacknext)
-		printf("%s\n", locstack->name);
+		printsym(locstack);
 	puts("");
 	for (; nhid; nhid--, hidstack = (void *)hidstack->n.stacknext)
-		printf("%s\n", hidstack->name);
+		printsym(hidstack);
 }
 
 int main(int argc, char *argv[])
