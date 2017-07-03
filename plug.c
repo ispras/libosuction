@@ -435,12 +435,6 @@ process_elf(const char *filename, off_t offset, const unsigned char *view)
 		for (size_t j = 0; j < nsyms; j++) {
 			Sym *sym = esyms + j;
 			int bind = ELF_ST_BIND(sym->st_info);
-			if (bind == STB_LOCAL) {
-				symptrs[j] = &dg_section(sym->st_shndx)->anchorsym;
-				continue;
-			}
-			if (!sym->st_name)
-				return "unnamed non-local symbol";
 			struct sym ssym = {0};
 			ssym.name = strings + sym->st_name;
 			int shndx = sym->st_shndx;
@@ -453,6 +447,13 @@ process_elf(const char *filename, off_t offset, const unsigned char *view)
 			if (shndx == SHN_COMMON || shndx == SHN_ABS) shndx = 0;
 			ssym.section = shndx ? dg_section(shndx) : 0;
 			ssym.vis = sym_vis(ELF_ST_VISIBILITY(sym->st_other));
+
+			if (bind == STB_LOCAL) {
+				symptrs[j] = ssym.section ? &ssym.section->anchorsym : 0;
+				continue;
+			}
+			if (!sym->st_name)
+				return "unnamed non-local symbol";
 
 			struct sym **symslot = sym_htab_lookup(ssym.name);
 			if (!*symslot) {
