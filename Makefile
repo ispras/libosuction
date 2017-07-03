@@ -19,7 +19,7 @@ all: $(DAEMON) $(WRAPPER) $(MERGE) $(PLUGIN-DEPS) $(PLUGIN-PRIV)
 test: libtest1.so
 
 libtest1.so: $(TEST-OBJ) $(PLUGIN-DEPS)
-	$(CC) -shared -o $@ $(TEST-OBJ) -Wl,--plugin,./$(PLUGIN-DEPS),--gc-sections,--version-script,vers-test1
+	$(CC) -shared -o $@ $(TEST-OBJ) -Wl,--plugin,./$(PLUGIN-DEPS),--plugin-opt,1:_,--gc-sections,--version-script,vers-test1
 
 $(PLUGIN-DEPS): plug.o
 	$(CC) -shared -o $@ $^ -Wl,--version-script,vers
