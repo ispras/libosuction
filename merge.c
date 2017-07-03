@@ -158,6 +158,7 @@ obj_htab_lookup(const char *path, long long offset)
 static int
 is_implicitly_used_section(const char *name)
 {
+	// FIXME: it's better to look at .gcc_except_table -> .text edges
 	static const char lsda_scn[] = ".gcc_except_table";
 	size_t lsda_scn_len = sizeof lsda_scn - 1;
 	if (!strncmp(name, lsda_scn, lsda_scn_len))
