@@ -16,6 +16,8 @@
 
 int plugin_is_GPL_compatible;
 
+/* Could have written #include "output.h" to the same effect.  We only need this
+   one declaration from that file though.  */
 extern const char *user_label_prefix;
 
 namespace {
@@ -85,7 +87,7 @@ private:
   splay_tree libprivate_nodes;
 }; // class pass_hide_globally_invisible
 
-static const char *
+const char *
 decl_name (const symtab_node *node)
 {
   const char *asname = IDENTIFIER_POINTER (DECL_ASSEMBLER_NAME (node->decl));
@@ -130,8 +132,7 @@ pass_hide_globally_invisible::lib_private_p (symtab_node *node)
 			      (splay_tree_key) decl_name (node));
 }
 
- /* We assume funciton names in the file F are prefixed by their length.   */
-static void
+void
 read_decl_names (FILE *f, int num_nodes, splay_tree nodes)
 {
   char *symname, *prefix;
@@ -207,7 +208,7 @@ pass_hide_globally_invisible::localize_comdat (symtab_node *node)
 
 /* The compiler segfaults if we change visibility of these functions.  It should
    be enough to special-case them.  */
-static bool
+bool
 dont_hide_p (const symtab_node *node)
 {
   return (!strcmp (decl_name (node), "__cxa_pure_virtual")
@@ -260,15 +261,15 @@ pass_hide_globally_invisible::execute (_EXECUTE_ARGS)
   return 0;
 }
 
-} // anon namespace
-
-static simple_ipa_opt_pass *
+simple_ipa_opt_pass *
 make_pass_hide_globally_invisible (gcc::context *ctxt, const char *filename)
 {
   pass_hide_globally_invisible *pass = new pass_hide_globally_invisible (ctxt);
   pass->set_fname (filename);
   return pass;
 }
+
+} // anon namespace
 
 int
 plugin_init (plugin_name_args *i, plugin_gcc_version *v)
