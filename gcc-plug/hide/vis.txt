@@ -1,5 +1,5 @@
 2 2
-staticfoo
-staticvar
-libprivate
-libprivatevar
+libpriv1.o:staticfoo
+libpriv1.o:staticvar
+libpriv1.o:libprivate
+libpriv1.o:libprivatevar

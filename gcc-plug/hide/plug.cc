@@ -88,43 +88,32 @@ private:
 static const char *
 decl_name (const symtab_node *node)
 {
-  return IDENTIFIER_POINTER (DECL_ASSEMBLER_NAME (node->decl));
+  const char *asname = IDENTIFIER_POINTER (DECL_ASSEMBLER_NAME (node->decl));
+  if (asname[0] == '*')
+    asname++;
+  return asname;
 }
 
-/* In newer versions of gcc there is symbol_table::assembler_names_equal_p which
-   almost does it.  However for older versions reusing the existing code is not
-   worth the hustle.  */
-static int
-declname_compar (const char *name1, const char *name2)
+/* Name of the object file we'll be emitting to.  The caller is responsible for
+   freeing the memory.  */
+const char *
+cur_filename_base ()
 {
-  int cmp1;
-  if (name1[0] == '*')
-    {
-      size_t ulp_len = strlen (user_label_prefix);
+  const char *ofilename = strrchr (main_input_filename, '/');
+  if (!ofilename)
+    ofilename = main_input_filename;
+  else
+    ofilename++;
 
-      name1 ++;
+  char *prefix = xstrdup (ofilename);
 
-      if (ulp_len == 0)
-	;
-      else if ((cmp1 = strncmp (name1, user_label_prefix, ulp_len)) == 0)
-	name1 += ulp_len;
-      else
-	return cmp1;
-    }
-  if (name2[0] == '*')
-    {
-      size_t ulp_len = strlen (user_label_prefix);
+  /* FIXME: this is a hack (we are making an assumption).  */
+  char *dot = strrchr (prefix , '.');
+  gcc_assert (dot && strlen (ofilename) - (dot - ofilename + 1) >=  1);
+  dot[1] = 'o';
+  dot[2] = '\0';
 
-      name2 ++;
-
-      if (ulp_len == 0)
-	;
-      else if ((cmp1 = strncmp (name2, user_label_prefix, ulp_len)) == 0)
-	name2 += ulp_len;
-      else
-	return cmp1;
-    }
-  return strcmp (name1, name2);
+  return prefix;
 }
 
 bool
@@ -145,16 +134,26 @@ pass_hide_globally_invisible::lib_private_p (symtab_node *node)
 static void
 read_decl_names (FILE *f, int num_nodes, splay_tree nodes)
 {
-  char *decl_name = NULL;
+  char *symname, *prefix;
   int i;
+  char c;
+
+  /* This does not change during a plugin invocation.  */
+  const char *cur_prefix = cur_filename_base ();
 
   for (i = 0; i < num_nodes; i++)
     {
-      if (fscanf (f, "%ms", &decl_name) != 1)
+      if (fscanf (f, "%*[\n \t]%m[^:]%c%ms", &prefix, &c, &symname) != 3
+	  || c != ':')
 	fatal_error ("error reading static/libprivate symbol names");
 
-      splay_tree_insert (nodes, (splay_tree_key) decl_name, 0);
+      if (!strcmp (cur_prefix, prefix))
+	  splay_tree_insert (nodes, (splay_tree_key) symname, 0);
+
+      free (prefix);
     }
+
+  free ((char*) cur_prefix);
 }
 
 void
@@ -221,10 +220,10 @@ pass_hide_globally_invisible::execute (_EXECUTE_ARGS)
   symtab_node *node;
   bool comdat_priv_failed_p;
 
-  static_nodes = splay_tree_new ((splay_tree_compare_fn) declname_compar,
+  static_nodes = splay_tree_new ((splay_tree_compare_fn) strcmp,
 				 (splay_tree_delete_key_fn) free,
 				 0);
-  libprivate_nodes = splay_tree_new ((splay_tree_compare_fn) declname_compar,
+  libprivate_nodes = splay_tree_new ((splay_tree_compare_fn) strcmp,
 				     (splay_tree_delete_key_fn) free,
 				     0);
   read_vis_changes ();
@@ -283,6 +282,9 @@ plugin_init (plugin_name_args *i, plugin_gcc_version *v)
       fprintf (stderr, "GCC version does not match plugin's.");
       return 1;
     }
+
+  if (user_label_prefix && strlen (user_label_prefix))
+    fatal_error ("the plugin does not make provision for -fleading-underscore");
 
   char *fname = NULL;
   for (arg = i->argv; arg; arg++)
