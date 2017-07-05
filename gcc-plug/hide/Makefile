@@ -15,8 +15,13 @@ test: $(PLUGIN)
 	$(CC) -O1 -fplugin=./$(PLUGIN) test.c
 
 check: test-libpriv.so test-asmname.so
-	$(shell ./check-bin.sh)
-	$(shell ./check-bin-asmname.sh)
+	for checker in check-bin*.sh ; do \
+	  ./"$$checker" ; \
+	  if [ $$? -ne 0 ] ; then \
+	    echo "$$checker" ; \
+	    exit 1 ; \
+	  fi ; \
+	done;
 
 test-libpriv.so: $(PLUGIN) libpriv1.c libpriv2.c libpriv1.h vis.txt
 	$(CC) -fplugin=./$(PLUGIN) -fplugin-arg-$(PLUGNAME)-fname=vis.txt -c -fpic -O2 -flto libpriv1.c -o libpriv1.o
