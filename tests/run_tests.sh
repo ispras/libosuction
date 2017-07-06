@@ -1,10 +1,10 @@
 #!/bin/bash
-GCCDIR="/home/eugene/Workspace/install/gcc-trunk/bin"                  
+GCCDIR="/home/eugene/Workspace/install/gcc-trunk/bin"
 CXX="$GCCDIR/x86_64-pc-linux-gnu-g++"
 CC="$GCCDIR/x86_64-pc-linux-gnu-gcc"
-CXXFLAGS+="-O0 -ggdb3 -fno-exceptions -fno-rtti -std=c++11 -fpic -Wall"
-PLUGIN=../libplug.so 
-PLUGIN_ARG="-fplugin-arg-libplug-sign-dlsym=1 -fplugin-arg-libplug-out=dlsym.res"
+CXXFLAGS+="-O2 -ggdb3 -fno-exceptions -fno-rtti -std=c++11 -fpic -Wall"
+PLUGIN=../libplug.so
+PLUGIN_ARG="-fplugin-arg-libplug-sign-dlsym=1"
 
 
 function dump_contains() {
@@ -25,6 +25,7 @@ function simple_test() {
     echo "FAIL: Expected $expected but actual is $actual"
   fi
   rm $file.* *.out
+  rm *.dlsym
 }
 
 function simple_test_cpp() {
@@ -41,6 +42,7 @@ function simple_test_cpp() {
     echo "FAIL: Expected $expected but actual is $actual"
   fi
   rm $file.* *.out
+  rm *.dlsym
 }
 # echo $(simple_test array.c       "dlsym matched to the signature" 1 "Signature"  )
 # echo $(simple_test array.c       "dlsym set state:DYNAMIC"	   1 "DYNAMIC")
