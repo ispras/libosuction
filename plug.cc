@@ -160,7 +160,7 @@ is_considered_call (struct resolve_ctx *ctx, gimple *stmt)
   tree t = gimple_call_fndecl (stmt);
   if (t && DECL_P (t))
     {
-      decl = DECL_NAME (gimple_call_fndecl (stmt));
+      decl = DECL_ASSEMBLER_NAME (gimple_call_fndecl (stmt));
       if (ctx->considered_functions->contains (IDENTIFIER_POINTER (decl)))
 	return true;
     }
