@@ -1,7 +1,5 @@
-#include <iostream>
-#include <gcc-plugin.h>
-#include <plugin-version.h>
-
+#include "gcc-plugin.h"
+#include "plugin-version.h"
 #include "tree-pass.h"
 #include "context.h"
 #include "function.h"
@@ -17,10 +15,7 @@
 #include "gimple-iterator.h"
 #include "gimple-walk.h"
 #include "hash-map.h"
-#include "hash-set.h"
 #include "cgraph.h"
-
-typedef hash_set<const char *, nofree_string_hash> string_set;
 
 int plugin_is_GPL_compatible;
 
@@ -57,21 +52,21 @@ struct resolve_ctx
   struct signature *base_sign;
   /* Call location */
   location_t loc;
-  /* Hash set of considered functions
-     for detecting cycles in cgraph */
-  string_set *considered_functions;
-  /* Hash set of possible symbols */
-  string_set *symbols;
+  /* Call stack emulation */
+  vec<const char *> *considered_functions;
+  /* List of possible symbols, keep only unique symbols */
+  vec<const char *> *symbols;
   /* Chain of calls (wrappers) that pass symbol through body.
      In other words, callstack. */
   vec<call_info> *calls_chain;
 };
 
+
 static void
 init_resolve_ctx (struct resolve_ctx *ctx)
 {
-  ctx->considered_functions = new string_set;
-  ctx->symbols = new string_set;
+  ctx->considered_functions = new vec<const char *> ();
+  ctx->symbols = new vec<const char *> ();
   ctx->calls_chain = new vec<call_info> ();
 }
 
@@ -96,15 +91,15 @@ push_call_info (struct resolve_ctx *ctx, struct cgraph_node *node,
 		gimple *stmt, struct signature *sign)
 {
   struct call_info call = { node, stmt, sign };
-  ctx->considered_functions->add (sign->func_name);
   ctx->calls_chain->safe_push (call);
+  ctx->considered_functions->safe_push (sign->func_name);
 }
 
 static void
 pop_call_info (resolve_ctx *ctx)
 {
-  struct call_info call = ctx->calls_chain->pop ();
-  ctx->considered_functions->remove (call.sign->func_name);
+  ctx->calls_chain->pop ();
+  ctx->considered_functions->pop ();
 }
 
 static vec<struct signature> signatures;
@@ -123,6 +118,27 @@ void
 dump_lattice_value (FILE *outf, resolve_lattice_t val);
 void
 write_dynamic_symbol_calls (struct resolve_ctx *ctx, resolve_lattice_t type);
+
+static bool
+vec_constains_str (vec<const char *> *v, const char *str)
+{
+  unsigned i;
+  for (i = 0; i < v->length(); ++ i)
+    if (!strcmp ((*v)[i], str))
+      return true;
+  return false;
+}
+
+static bool
+vec_add_unique_str (vec<const char *> *v, const char *str)
+{
+  unsigned i;
+  for (i = 0; i < v->length(); ++ i)
+    if (!strcmp ((*v)[i], str))
+      return false;
+  v->safe_push (str);
+  return true;
+}
 
 /* Compute the meet operator between VAL1 and VAL2:
    UNDEFINED M UNDEFINED          = UNDEFINED
@@ -161,7 +177,7 @@ is_considered_call (struct resolve_ctx *ctx, gimple *stmt)
   if (t && DECL_P (t))
     {
       decl = DECL_ASSEMBLER_NAME (gimple_call_fndecl (stmt));
-      if (ctx->considered_functions->contains (IDENTIFIER_POINTER (decl)))
+      if (vec_constains_str (ctx->considered_functions, IDENTIFIER_POINTER (decl)))
 	return true;
     }
   return false;
@@ -508,7 +524,7 @@ parse_symbol (struct resolve_ctx *ctx, gimple *stmt, tree symbol)
       return parse_symbol (ctx, stmt, TREE_OPERAND (symbol, 0));
 
     case STRING_CST:
-      ctx->symbols->add (TREE_STRING_POINTER (symbol));
+      vec_add_unique_str (ctx->symbols, TREE_STRING_POINTER (symbol));
       return CONSTANT;
 
     case SSA_NAME:
@@ -637,7 +653,7 @@ process_calls (struct cgraph_node *node)
 	      fprintf (dump_file, "\t%s set state:", cs->callee->asm_name ());
 	      dump_lattice_value (dump_file, result);
 	      fprintf (dump_file, "\n");
-	      if (ctx.symbols->elements ())
+	      if (!ctx.symbols->is_empty ())
 		dump_dynamic_symbol_calls (&ctx);
 	    }
 	  write_dynamic_symbol_calls (&ctx, result);
@@ -772,14 +788,15 @@ write_dynamic_symbol_calls (struct resolve_ctx *ctx, resolve_lattice_t type)
   struct call_info *caller = get_current_call_info (ctx);
   gcc_assert (caller);
   /* file_name:line:caller:function:type:symbols */
-  if (ctx->symbols->elements())
+  if (!ctx->symbols->is_empty ())
     {
       fprintf (output, "%s:%d:%s:%s:", LOCATION_FILE (ctx->loc),
 	       LOCATION_LINE (ctx->loc), caller->node->asm_name (),
 	       ctx->base_sign->func_name);
       dump_lattice_value (output, type);
       fprintf (output, ":");
-      for (string_set::iterator it = ctx->symbols->begin ();
+
+      for (const char **it = ctx->symbols->begin ();
 	   it != ctx->symbols->end ();
 	   ++it)
 	{
@@ -802,7 +819,7 @@ write_dynamic_symbol_calls (struct resolve_ctx *ctx, resolve_lattice_t type)
 void
 dump_dynamic_symbol_calls (struct resolve_ctx *ctx)
 {
-  if (!ctx->symbols->elements ())
+  if (ctx->symbols->is_empty ())
     {
       fprintf(dump_file, "\n\n");
       return;
@@ -819,7 +836,7 @@ dump_dynamic_symbol_calls (struct resolve_ctx *ctx)
   fprintf(dump_file, "\t%s:%d:%s->%s->[",
 	  LOCATION_FILE (ctx->loc), LOCATION_LINE (ctx->loc),
 	  func_name, ctx->base_sign->func_name);
-  for (string_set::iterator it = ctx->symbols->begin ();
+  for (const char **it = ctx->symbols->begin ();
        it != ctx->symbols->end ();
        ++it)
     {

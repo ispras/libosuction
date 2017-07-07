@@ -83,7 +83,7 @@ echo $(simple_test const_array7.c "dlsym matched to the signature" 1 "Signature"
 echo $(simple_test const_array7.c "dlsym set state:DYNAMIC" 1 "DYNAMIC")
 echo $(simple_test const_struct.c "dlsym matched to the signature" 1 "Signature"  )
 echo $(simple_test const_struct.c "dlsym set state:CONSTANT" 1 "CONSTANT")
-echo $(simple_test const_struct.c "main->dlsym->\[(baz,bar)|(baz,bar)\]" 1 "Symbol Set" )
+echo $(simple_test const_struct.c "main->dlsym->\[(baz,bar)|(bar,baz)\]" 1 "Symbol Set" )
 echo $(simple_test conditional.c "dlsym matched to the signature" 1 "Signature"  )
 echo $(simple_test conditional.c "dlsym set state:CONSTANT" 1 "CONSTANT" )
 echo $(simple_test conditional.c "main->dlsym->\[(baz,bar)|(bar,baz)\]" 1 "Symbol Set" )
