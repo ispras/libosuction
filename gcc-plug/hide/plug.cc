@@ -2,13 +2,17 @@
 
 #include "bversion.h"
 #include "gcc-plugin.h"
+#include "opts.h"
+#include "toplev.h"
 #include "tree.h"
+#include "tree-cfg.h"
 #include "tree-pass.h"
 #include "plugin-version.h"
 #include "context.h"
 #include "cgraph.h"
 #include "splay-tree.h"
 #include "diagnostic-core.h"
+#include "md5.h"
 
 #if BUILDING_GCC_VERSION < 4009
 #error "This gcc is too old. The minimum required version is 4.9.x"
@@ -48,6 +52,9 @@ const pass_data pass_data_hide_globally_invisible =
 #if BUILDING_GCC_VERSION >= 5000
 #define _EXECUTE_ARGS function *
 #define fatal_error(...) fatal_error (UNKNOWN_LOCATION, __VA_ARGS__)
+#define add_asm_node(asm_str) symtab->finalize_toplevel_asm (asm_str)
+#define dump_symtab(f) symtab_node::dump_table (f)
+#define cgraph_function_with_gimple_body_p(node) node->has_gimple_body_p ()
 #define set_comdat_group(node, group) node->set_comdat_group (group)
 #define set_section(node, section) node->set_section (section)
 #define make_decl_local(node) node->make_decl_local ()
@@ -269,6 +276,65 @@ make_pass_hide_globally_invisible (gcc::context *ctxt, const char *filename)
   return pass;
 }
 
+#define PLUG_SECTION_PREFIX ".comment.privplugid."
+
+void
+printmd5 (char *p, const unsigned char md5[])
+{
+  for (int i = 0; i < 16; i++)
+    {
+      *p++ = "0123456789abcdef"[md5[i] >> 4];
+      *p++ = "0123456789abcdef"[md5[i] & 15];
+    }
+}
+
+void
+emit_privplugid_section (const unsigned char md5[])
+{
+  char buf[] =
+   "\t.pushsection\t" PLUG_SECTION_PREFIX
+   "\0_23456789abcdef0123456789abcdef,\"e\",@note\n"
+   "\t.popsection\n";
+  printmd5 (buf + strlen (buf), md5);
+  add_asm_node (build_string (sizeof buf - 1, buf));
+}
+
+void
+cbdump(void *, void *)
+{
+  char *streamptr;
+  size_t streamsz;
+  FILE *f = open_memstream (&streamptr, &streamsz);
+
+  int save_noaddr = flag_dump_noaddr;
+  flag_dump_noaddr = 1;
+  dump_symtab (f);
+
+  cgraph_node *node;
+  FOR_EACH_DEFINED_FUNCTION (node)
+    if (cgraph_function_with_gimple_body_p (node))
+      dump_function_to_file (node->decl, f, TDF_SLIM);
+
+  flag_dump_noaddr = save_noaddr;
+
+  for (int i = 0; i < save_decoded_options_count; i++)
+    switch (save_decoded_options[i].opt_index)
+      {
+      default:
+	fprintf(f, "%s\n", save_decoded_options[i].orig_option_with_args_text);
+      case OPT_o:;
+      case OPT_fplugin_:;
+      case OPT_fplugin_arg_:;
+      }
+  fclose (f);
+
+  unsigned char md5sum[16];
+  md5_buffer (streamptr, streamsz, md5sum);
+  free (streamptr);
+
+  emit_privplugid_section (md5sum);
+}
+
 } // anon namespace
 
 int
@@ -304,6 +370,8 @@ plugin_init (plugin_name_args *i, plugin_gcc_version *v)
   pass_info.pos_op = PASS_POS_INSERT_BEFORE;
 
   register_callback (i->base_name, PLUGIN_PASS_MANAGER_SETUP, NULL, &pass_info);
+
+  register_callback (i->base_name, PLUGIN_ALL_IPA_PASSES_START, cbdump, NULL);
 
   return 0;
 }
