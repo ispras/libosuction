@@ -35,6 +35,8 @@ _Static_assert(LD_PLUGIN_API_VERSION == 1, "unexpected plugin API version");
 
 #define ELFDATA ELFDATA2LSB
 
+#define PLUG_SECTION_PREFIX ".comment.privplugid."
+
 static int sockfd;
 static struct {
 	const char *output_name;
@@ -45,6 +47,7 @@ static struct {
 	struct objfile {
 		struct objfile *next;
 		const char *name;
+		const char *srcid;
 		off_t offset;
 		struct section {
 			struct objfile *object;
@@ -219,7 +222,8 @@ dg_print(FILE *f)
 		dg_info.output_name, dg_info.entrypoint);
 	int *scndeps = calloc(nscn, sizeof *scndeps);
 	for (struct objfile *o = dg_info.obj_list; o; o = o->next) {
-		fprintf(f, "%d\t%lld\t%s\n", o->uids, (long long)o->offset, o->name);
+		fprintf(f, "%d\t%lld\t%s\t%s\n",
+			o->uids, (long long)o->offset, o->name, o->srcid);
 		for (struct section *s = o->sections;
 		     s < o->sections + o->num_sections; s++)
 			if (s->name) {
@@ -278,6 +282,7 @@ dg_object_start(const char *filename, off_t offset, int num_sections)
 	struct objfile *o = malloc(sizeof *o);
 	o->next = dg_info.obj_list;
 	o->name = strdup(filename);
+	o->srcid = "-";
 	o->offset = offset;
 	o->sections = calloc(num_sections, sizeof *o->sections);
 	o->num_sections = num_sections;
@@ -333,6 +338,14 @@ dg_object_end()
 {
 }
 
+static int
+dg_record_srcid(const char *name)
+{
+	if (strncmp (name, PLUG_SECTION_PREFIX, strlen (PLUG_SECTION_PREFIX)))
+		return 0;
+	dg_info.obj_list->srcid = name + strlen (PLUG_SECTION_PREFIX);
+	return 1;
+}
 static void *
 memdup(const void *p, size_t l)
 {
@@ -390,8 +403,12 @@ process_elf(const char *filename, off_t offset, const unsigned char *view)
 		case SHT_INIT_ARRAY: case SHT_FINI_ARRAY:
 		case SHT_PREINIT_ARRAY:
 			used = 1;
+		case SHT_NOTE:
+			if (shdr->sh_flags == SHF_EXCLUDE
+			    && dg_record_srcid (shstrtab + shdr->sh_name))
+				continue;
 		case SHT_PROGBITS: case SHT_NOBITS:
-		case SHT_ARM_EXIDX: case SHT_NOTE:
+		case SHT_ARM_EXIDX:
 			dg_section_init(dg_section(i),
 					shstrtab + shdr->sh_name,
 			                shdr->sh_size, used);

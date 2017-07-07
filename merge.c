@@ -25,6 +25,7 @@ struct dso {
 	int nsym;
 	struct obj {
 		const char *path;
+		const char *srcid;
 		long long offset;
 		int nscn;
 		struct scn *scns;
@@ -176,7 +177,7 @@ input(struct dso *dso, FILE *f)
 	struct obj *o = dso->obj = calloc(dso->nobj, sizeof *dso->obj);
 	struct scn *s = dso->scn = calloc(dso->nscn, sizeof *dso->scn);
 	for (; o < dso->obj + dso->nobj; o++) {
-		fscanf(f, "%d %lld %ms", &o->nscn, &o->offset, &o->path);
+		fscanf(f, "%d %lld %ms %ms", &o->nscn, &o->offset, &o->path, &o->srcid);
 		o->scns = s;
 		for (; s < o->scns + o->nscn; s++) {
 			fscanf(f, "%d %lld %ms %*[^\n]", &s->used, &s->size, &s->name);
@@ -397,9 +398,10 @@ static void printsym(struct sym *sym)
 {
 	if (sym->weak == 'C') return;
 	struct node *n = sym->defscn;
-	const char *t, *objname = ((struct scn *)n)->objptr->path;
+	struct obj *o = ((struct scn *)n)->objptr;
+	const char *t, *objname = o->path;
 	if ((t = strrchr(objname, '/'))) objname = t+1;
-	printf("%s:%s\n", objname, sym->name);
+	printf("%s:%s:%s\n", objname, o->srcid, sym->name);
 }
 static void mark(struct dso *dsos, int n)
 {
