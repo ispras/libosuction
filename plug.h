@@ -1,5 +1,5 @@
-#ifndef GCC_COMMON_H_INCLUDED
-#define GCC_COMMON_H_INCLUDED
+#ifndef PLUG_H_INCLUDED
+#define PLUG_H_INCLUDED
 
 #include "bversion.h"
 #if BUILDING_GCC_VERSION < 4009
