@@ -7,6 +7,10 @@
 
 #include <elf.h>
 
+/* Some versions of the elf headers define it as signed int.  */
+#undef SHF_EXCLUDE
+#define SHF_EXCLUDE	     (1U << 31)
+
 #define HAVE_STDINT_H
 #include <plugin-api.h>
 _Static_assert(LD_PLUGIN_API_VERSION == 1, "unexpected plugin API version");
