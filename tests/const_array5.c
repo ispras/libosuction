@@ -2,6 +2,12 @@
 
 static const char *mn = "zoo";
 
+
+__attribute__((noinline)) void consume (char **feed)
+{
+  *feed = "fake";
+}
+
 int main (int argc, char **argv)
 {
   void *handle;
@@ -14,10 +20,8 @@ int main (int argc, char **argv)
       "bar",
   };
 
-  fake = &symbols[1];
   handle = dlopen("./testlib.so", RTLD_NOW);
-  *fake = "baz";
-//  printf("%A", &symbols[2]);
+  consume (&symbols[1]);
   for (i = 0; i < 2; i++) {
       my_dyn_func = (void (*)(int)) dlsym (handle, symbols[i]);
       my_dyn_func(2);

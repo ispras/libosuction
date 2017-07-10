@@ -4,8 +4,9 @@
 static __attribute__((noinline)) void* function_caller(char *lib_name, int num, char *func_name)
     
 {
+  int i;
   void * library_handle = dlopen(lib_name, RTLD_NOW); 
-  for (int i = 0; i < num; ++ i)
+  for (i = 0; i < num; ++ i)
     printf ("inc");
   return dlsym(library_handle, func_name);
 }

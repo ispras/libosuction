@@ -1,11 +1,5 @@
 #!/bin/bash
-GCCDIR="/home/eugene/Workspace/install/gcc-trunk/bin"
-CXX="$GCCDIR/x86_64-pc-linux-gnu-g++"
-CC="$GCCDIR/x86_64-pc-linux-gnu-gcc"
-CXXFLAGS+="-O2 -ggdb3 -fno-exceptions -fno-rtti -std=c++11 -fpic -Wall"
-PLUGIN=../libplug.so
 PLUGIN_ARG="-fplugin-arg-libplug-sign-dlsym=1"
-
 
 function dump_contains() {
   echo $(grep -cPR "$2" $1)
@@ -17,7 +11,7 @@ function simple_test() {
   local expected="$3"
   echo "TESTING $file ($4)"
   $CC -O2 -fplugin=$PLUGIN $PLUGIN_ARG $file -ldl -fdump-ipa-all
-  local actual=$(dump_contains $file.312i.dlsym "$str")
+  local actual=$(dump_contains $file."$DUMP_NUMBER"i.dlsym "$str")
   if [ $expected -eq $actual ]
   then
     echo "PASS"
@@ -34,7 +28,7 @@ function simple_test_cpp() {
   local expected="$3"
   echo "TESTING $file ($4)"
   $CXX -O2 -fplugin=$PLUGIN $PLUGIN_ARG $file -ldl -fdump-ipa-all
-  local actual=$(dump_contains $file.312i.dlsym "$str")
+  local actual=$(dump_contains $file."$DUMP_NUMBER"i.dlsym "$str")
   if [ $expected -eq $actual ]
   then
     echo "PASS"
@@ -44,6 +38,7 @@ function simple_test_cpp() {
   rm $file.* *.out
   rm *.dlsym
 }
+# TODO handle constant index
 # echo $(simple_test array.c       "dlsym matched to the signature" 1 "Signature"  )
 # echo $(simple_test array.c       "dlsym set state:DYNAMIC"	   1 "DYNAMIC")
 echo $(simple_test array_assign.c "dlsym matched to the signature" 1 "Signature"  )
@@ -52,9 +47,6 @@ echo $(simple_test array_assign.c "main->dlsym->\[init\]" 1 "Symbol Set" )
 echo $(simple_test array_assign_part.c "dlsym matched to the signature" 1 "Signature"  )
 echo $(simple_test array_assign_part.c "dlsym set state:PARTIALLY_CONSTANT" 1 "PARTIALLY_CONSTANT" )
 echo $(simple_test array_assign_part.c "main->dlsym->\[_init\]" 1 "Symbol Set" )
-echo $(simple_test assign.c "dlsym matched to the signature" 1 "Signature"  )
-echo $(simple_test assign.c "dlsym set state:CONSTANT" 1 "CONSTANT")
-echo $(simple_test assign.c "main->dlsym->\[bar\]" 1 "Symbol Set" )
 echo $(simple_test_cpp const.cpp "dlsym matched to the signature" 1 "Signature"  )
 echo $(simple_test_cpp const.cpp "dlsym set state:CONSTANT" 1 "CONSTANT")
 echo $(simple_test_cpp const.cpp "int main\(int, char\*\*\)->dlsym->\[Create\]" 1 "Symbol Set" )
@@ -75,7 +67,7 @@ echo $(simple_test const_array4.c "dlsym set state:CONSTANT" 1 "CONSTANT")
 echo $(simple_test const_array4.c "main->dlsym->\[(foo,bar)|(bar,foo)\]" 1 "Symbol Set" )
 echo $(simple_test const_array5.c "dlsym matched to the signature" 1 "Signature"  )
 echo $(simple_test const_array5.c "dlsym set state:PARTIALLY_CONSTANT" 1 "PARTIALLY_CONSTANT")
-echo $(simple_test const_array5.c "main->dlsym->\[foo\]" 1 "Symbol Set" )
+echo $(simple_test const_array5.c "main->dlsym->\[(foo,bar)|(bar,foo)\]" 1 "Symbol Set" )
 echo $(simple_test const_array6.c "dlsym matched to the signature" 1 "Signature"  )
 echo $(simple_test const_array6.c "dlsym set state:CONSTANT" 1 "CONSTANT")
 echo $(simple_test const_array6.c "main->dlsym->\[(bar1,bar)|(bar,bar1)\]" 1 "Symbol Set" )
@@ -112,9 +104,6 @@ echo $(simple_test macro_passing.c "dlsym matched to the signature" 2 "Signature
 echo $(simple_test macro_passing.c "dlsym set state:CONSTANT" 2 "CONSTANT" )
 echo $(simple_test macro_passing.c "main->dlsym->\[foo\]" 1 "Symbol Set" )
 echo $(simple_test macro_passing.c "main->dlsym->\[bar\]" 1 "Symbol Set" )
-echo $(simple_test proxy.c "dlsym matched to the signature" 2 "Signature"  )
-echo $(simple_test proxy.c "dlsym set state:CONSTANT" 1 "CONSTANT" )
-echo $(simple_test proxy.c "main->dlsym->\[bar\]" 1 "Symbol Set" )
 echo $(simple_test_cpp reinter_cast.cpp "dlsym matched to the signature" 1 "Signature"  )
 echo $(simple_test_cpp reinter_cast.cpp "dlsym set state:CONSTANT" 1 "CONSTANT" )
 echo $(simple_test_cpp reinter_cast.cpp "int main\(\)->dlsym->\[bar\]" 1 "Symbol Set" )

@@ -8,9 +8,8 @@ int main (int argc, char **argv)
   void (* my_dyn_func)(int);
   int i = 0;
 
-  const char * symbols[] = { 
+  const char * symbols[2] = {
       "foo",
-      "bar",
   };  
 
   symbols[1] = mn;
