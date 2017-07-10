@@ -4,6 +4,10 @@ CPPFLAGS += -I$(shell $(CC) -print-file-name=plugin)/include
 PLUGNAME = libmkpriv
 PLUGIN = $(PLUGNAME).so
 
+plug = -fplugin=./$(PLUGIN)
+hash = $(plug) -fplugin-arg-$(PLUGNAME)-run=1
+vis  = $(plug) -fplugin-arg-$(PLUGNAME)-run=2 -fplugin-arg-$(PLUGNAME)-fname
+
 all: $(PLUGIN)
 
 $(PLUGIN): plug.o
@@ -23,13 +27,18 @@ check: test-libpriv.so test-asmname.so
 	  fi ; \
 	done;
 
-test-libpriv.so: $(PLUGIN) libpriv1.c libpriv2.c libpriv1.h vis.txt
-	$(CC) -fplugin=./$(PLUGIN) -fplugin-arg-$(PLUGNAME)-fname=vis.txt -c -fpic -O2 -flto libpriv1.c -o libpriv1.o
-	$(CC) -fplugin=./$(PLUGIN) -fplugin-arg-$(PLUGNAME)-fname=vis.txt -c -fpic -O2 -flto libpriv2.c -o libpriv2.o
+test-libpriv.so: $(PLUGIN) libpriv1.c libpriv2.c libpriv1.h libpriv.vis.def
+	$(CC) $(hash) -c -fpic -O2 -flto libpriv1.c -o libpriv1.o
+	$(CC) $(hash) -c -fpic -O2 -flto libpriv2.c -o libpriv2.o
+	./pastehash.sh libpriv1 libpriv2
+	$(CC) $(vis)=libpriv.vis -c -fpic -O2 -flto libpriv1.c -o libpriv1.o
+	$(CC) $(vis)=libpriv.vis -c -fpic -O2 -flto libpriv2.c -o libpriv2.o
 	$(CC) -shared libpriv1.o libpriv2.o -o $@
 
-test-asmname.so: $(PLUGIN) asmname.vis asmname.c
-	$(CC) -fplugin=./$(PLUGIN) -fplugin-arg-$(PLUGNAME)-fname=asmname.vis -c -fpic -O2 asmname.c -o asmname.o
+test-asmname.so: $(PLUGIN) asmname.c asmname.vis.def
+	$(CC) $(hash) -c -fpic -O2 asmname.c -o asmname.o
+	./pastehash.sh asmname
+	$(CC) $(vis)=asmname.vis -c -fpic -O2 asmname.c -o asmname.o
 	$(CC) -shared asmname.o -o $@
 
 clean:

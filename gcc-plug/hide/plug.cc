@@ -26,6 +26,8 @@ extern const char *user_label_prefix;
 
 namespace {
 
+static char md5str[32];
+
 const pass_data pass_data_hide_globally_invisible =
 {
   SIMPLE_IPA_PASS, /* type */
@@ -103,28 +105,6 @@ decl_name (const symtab_node *node)
   return asname;
 }
 
-/* Name of the object file we'll be emitting to.  The caller is responsible for
-   freeing the memory.  */
-const char *
-cur_filename_base ()
-{
-  const char *ofilename = strrchr (main_input_filename, '/');
-  if (!ofilename)
-    ofilename = main_input_filename;
-  else
-    ofilename++;
-
-  char *prefix = xstrdup (ofilename);
-
-  /* FIXME: this is a hack (we are making an assumption).  */
-  char *dot = strrchr (prefix , '.');
-  gcc_assert (dot && strlen (ofilename) - (dot - ofilename + 1) >=  1);
-  dot[1] = 'o';
-  dot[2] = '\0';
-
-  return prefix;
-}
-
 bool
 pass_hide_globally_invisible::no_external_uses_p (symtab_node *node)
 {
@@ -142,26 +122,21 @@ pass_hide_globally_invisible::lib_private_p (symtab_node *node)
 void
 read_decl_names (FILE *f, int num_nodes, splay_tree nodes)
 {
-  char *symname, *prefix;
+  char *symname;
+  char srcid[32 + 1];
   int i;
-  char c;
-
-  /* This does not change during a plugin invocation.  */
-  const char *cur_prefix = cur_filename_base ();
+  char c1 = 0, c2 = 0;
 
   for (i = 0; i < num_nodes; i++)
     {
-      if (fscanf (f, "%*[\n \t]%m[^:]%c%ms", &prefix, &c, &symname) != 3
-	  || c != ':')
-	fatal_error ("error reading static/libprivate symbol names");
+      if ((fscanf (f, "%*[\n \t]%*[^:]%c%32[^:]%c%ms",
+                   &c1, &srcid, &c2, &symname) != 4)
+          || c1 != ':' || c2 != ':')
+        fatal_error ("error reading static/libprivate symbol names");
 
-      if (!strcmp (cur_prefix, prefix))
+      if (!strncmp (md5str, srcid, 32))
 	  splay_tree_insert (nodes, (splay_tree_key) symname, 0);
-
-      free (prefix);
     }
-
-  free ((char*) cur_prefix);
 }
 
 void
@@ -289,18 +264,18 @@ printmd5 (char *p, const unsigned char md5[])
 }
 
 void
-emit_privplugid_section (const unsigned char md5[])
+emit_privplugid_section ()
 {
   char buf[] =
    "\t.pushsection\t" PLUG_SECTION_PREFIX
    "\0_23456789abcdef0123456789abcdef,\"e\",@note\n"
    "\t.popsection\n";
-  printmd5 (buf + strlen (buf), md5);
+  strncpy (buf + strlen (buf), md5str, 32);
   add_asm_node (build_string (sizeof buf - 1, buf));
 }
 
 void
-cbdump(void *, void *)
+compmd5 (void *, void *dump_p)
 {
   char *streamptr;
   size_t streamsz;
@@ -332,7 +307,10 @@ cbdump(void *, void *)
   md5_buffer (streamptr, streamsz, md5sum);
   free (streamptr);
 
-  emit_privplugid_section (md5sum);
+  printmd5 (md5str, md5sum);
+
+  if (dump_p)
+    emit_privplugid_section ();
 }
 
 } // anon namespace
@@ -343,6 +321,8 @@ plugin_init (plugin_name_args *i, plugin_gcc_version *v)
   plugin_argument *arg;
   plugin_init_func check = plugin_init;
   struct register_pass_info pass_info;
+  char *fname = NULL;
+  long gcc_run = 0;
 
   if (!plugin_default_version_check (&gcc_version, v))
     {
@@ -353,25 +333,41 @@ plugin_init (plugin_name_args *i, plugin_gcc_version *v)
   if (user_label_prefix && strlen (user_label_prefix))
     fatal_error ("the plugin does not make provision for -fleading-underscore");
 
-  char *fname = NULL;
-  for (arg = i->argv; arg; arg++)
+  for (arg = i->argv; arg < i->argv + i->argc; arg++)
     if (!strcmp (arg->key, "fname"))
+      fname = arg->value;
+    else if (!strcmp (arg->key, "run"))
       {
-	fname = arg->value;
-	break;
+        errno = 0;
+        gcc_run = strtol (arg->value, (char **) NULL, 10);
+        if (errno)
+          goto bad_gcc_run;
       }
-  if (!fname)
+    else
+      fatal_error ("unknown plugin option '%s'", arg->key);
+  if (gcc_run == 2 && !fname)
     fatal_error ("file with visibility modifications not specified "
 		 "(pass 'fname' argument to the plugin)");
+  if (!(gcc_run == 1 || gcc_run == 2))
+  bad_gcc_run:
+    fatal_error ("pass run = 1 or 2 to the plugin");
 
   pass_info.pass = make_pass_hide_globally_invisible (g, fname);
   pass_info.reference_pass_name = "visibility";
   pass_info.ref_pass_instance_number = 1;
   pass_info.pos_op = PASS_POS_INSERT_BEFORE;
 
-  register_callback (i->base_name, PLUGIN_PASS_MANAGER_SETUP, NULL, &pass_info);
-
-  register_callback (i->base_name, PLUGIN_ALL_IPA_PASSES_START, cbdump, NULL);
+  if (gcc_run == 1)
+    {
+      void *dump_hash = (void *) true;
+      register_callback (i->base_name, PLUGIN_ALL_IPA_PASSES_START, compmd5, dump_hash);
+    }
+  else
+    {
+      void *dump_hash = (void *) false;
+      register_callback (i->base_name, PLUGIN_ALL_IPA_PASSES_START, compmd5, dump_hash);
+      register_callback (i->base_name, PLUGIN_PASS_MANAGER_SETUP, NULL, &pass_info);
+    }
 
   return 0;
 }
