@@ -1,21 +1,4 @@
-#include "gcc-plugin.h"
-#include "plugin-version.h"
-#include "tree-pass.h"
-#include "context.h"
-#include "function.h"
-#include "tree.h"
-#include "tree-ssa-alias.h"
-#include "internal-fn.h"
-#include "is-a.h"
-#include "predict.h"
-#include "basic-block.h"
-#include "gimple-expr.h"
-#include "gimple.h"
-#include "gimple-pretty-print.h"
-#include "gimple-iterator.h"
-#include "gimple-walk.h"
-#include "hash-map.h"
-#include "cgraph.h"
+#include "plug.h"
 
 int plugin_is_GPL_compatible;
 
@@ -40,7 +23,7 @@ struct call_info
   /* Function node in the call graph */
   struct cgraph_node *node;
   /* Call statement */
-  gimple *stmt;
+  gimple stmt;
   /* Signature of dynamic call */
   struct signature *sign;
 };
@@ -88,7 +71,7 @@ get_current_call_info (resolve_ctx *ctx)
 
 static void
 push_call_info (struct resolve_ctx *ctx, struct cgraph_node *node,
-		gimple *stmt, struct signature *sign)
+		gimple stmt, struct signature *sign)
 {
   struct call_info call = { node, stmt, sign };
   ctx->calls_chain->safe_push (call);
@@ -107,9 +90,9 @@ static const char *output_file_name = NULL;
 static FILE *output;
 
 static resolve_lattice_t
-parse_symbol (struct resolve_ctx *ctx, gimple *stmt, tree symbol);
+parse_symbol (struct resolve_ctx *ctx, gimple stmt, tree symbol);
 static resolve_lattice_t
-parse_gimple_stmt (struct resolve_ctx *ctx, gimple *stmt);
+parse_gimple_stmt (struct resolve_ctx *ctx, gimple stmt);
 void
 dump_dynamic_symbol_calls (struct resolve_ctx *ctx);
 void
@@ -170,7 +153,7 @@ resolve_lattice_meet (resolve_lattice_t val1, resolve_lattice_t val2)
 }
 
 static bool
-is_considered_call (struct resolve_ctx *ctx, gimple *stmt)
+is_considered_call (struct resolve_ctx *ctx, gimple stmt)
 {
   tree decl;
   tree t = gimple_call_fndecl (stmt);
@@ -188,7 +171,7 @@ is_read_only (struct resolve_ctx *ctx, struct varpool_node *node)
 {
   unsigned i;
   ipa_ref *ref = NULL;
-  for (i = 0; node->iterate_referring (i, ref); i++)
+  for (i = 0; ipa_ref_list_referring_iterate (&node->ref_list, i, ref); i++)
     {
       /* Skip already considered functions */
       if (ref->use == IPA_REF_ADDR
@@ -259,7 +242,7 @@ collect_values_global (struct resolve_ctx *ctx, struct varpool_node *node)
   unsigned i;
   ipa_ref *ref = NULL;
   resolve_lattice_t result = UNDEFINED;
-  for (i = 0; node->iterate_referring (i, ref); i++)
+  for (i = 0; ipa_ref_list_referring_iterate (&node->ref_list, i, ref); i++)
     if (ref->use == IPA_REF_STORE)
       result = resolve_lattice_meet (result, parse_gimple_stmt (ctx, ref->stmt));
   return result;
@@ -272,10 +255,10 @@ collect_values_local (struct resolve_ctx *ctx, tree *expr_p)
 {
   resolve_lattice_t result = UNDEFINED;
   basic_block bb;
-  gimple *stmt;
+  gimple stmt;
   struct call_info *call = get_current_call_info (ctx);
 
-  FOR_EACH_BB_FN (bb, call->node->get_fun ())
+  FOR_EACH_BB_FN (bb, get_fun_cgraph_node (call->node))
     {
       gimple_stmt_iterator si;
       for (si = gsi_start_bb (bb); !gsi_end_p (si); gsi_next (&si))
@@ -307,12 +290,12 @@ contains_ref_expr (struct resolve_ctx *ctx,  tree *expr_p)
 {
   basic_block bb;
   unsigned j;
-  gimple *stmt;
+  gimple stmt;
   tree base = get_base_address (*expr_p), *op;
   struct cgraph_node *node = get_current_call_info (ctx)->node;
 
   // TODO use dominators and stmt seq for more precise prediction.
-  FOR_EACH_BB_FN (bb, node->get_fun ())
+  FOR_EACH_BB_FN (bb, get_fun_cgraph_node (node))
     {
       gimple_stmt_iterator si;
       for (si = gsi_start_bb (bb); !gsi_end_p (si); gsi_next (&si))
@@ -359,7 +342,7 @@ contains_ref_expr (struct resolve_ctx *ctx,  tree *expr_p)
 }
 
 static resolve_lattice_t
-parse_ref_1 (struct resolve_ctx *ctx, gimple *stmt, tree ctor,
+parse_ref_1 (struct resolve_ctx *ctx, gimple stmt, tree ctor,
 	     auto_vec<tree, 10> *stack, unsigned HOST_WIDE_INT depth)
 {
   unsigned HOST_WIDE_INT cnt;
@@ -419,7 +402,7 @@ parse_ref_1 (struct resolve_ctx *ctx, gimple *stmt, tree ctor,
 }
 
 static resolve_lattice_t
-parse_ref (struct resolve_ctx *ctx, gimple *stmt, tree *expr_p)
+parse_ref (struct resolve_ctx *ctx, gimple stmt, tree *expr_p)
 {
   tree base, ctor, t;
   auto_vec<tree, 10> expr_stack;
@@ -440,7 +423,7 @@ parse_ref (struct resolve_ctx *ctx, gimple *stmt, tree *expr_p)
       /* Global var */
       if (TREE_STATIC (base) || DECL_EXTERNAL (base) || in_lto_p)
 	{
-	  if (!is_read_only (ctx, varpool_node::get (base)))
+	  if (!is_read_only (ctx, varpool_get_node (base)))
 	    result = resolve_lattice_meet (result, DYNAMIC);
 
 	  tree init = DECL_INITIAL (base);
@@ -474,7 +457,7 @@ parse_default_def (struct resolve_ctx *ctx, tree default_def)
   tree t, symbol, sym_decl = SSA_NAME_IDENTIFIER (default_def);
   const char *caller_name, *subsymname = IDENTIFIER_POINTER (sym_decl);
 
-  for (arg_num = 0, t = DECL_ARGUMENTS (call->node->get_fun ()->decl);
+  for (arg_num = 0, t = DECL_ARGUMENTS (get_fun_cgraph_node (call->node)->decl);
        t;
        t = DECL_CHAIN (t), arg_num++)
     if (DECL_NAME (t) == sym_decl)
@@ -493,7 +476,7 @@ parse_default_def (struct resolve_ctx *ctx, tree default_def)
 
       /* FIXME recursive cycle is skipped until string are not handled,
 	 otherwise it is incoorect */
-      if (ctx->considered_functions->contains (caller_name))
+      if (vec_constains_str (ctx->considered_functions, caller_name))
 	continue;
 
       if (dump_file)
@@ -513,9 +496,9 @@ parse_default_def (struct resolve_ctx *ctx, tree default_def)
 }
 
 static resolve_lattice_t
-parse_symbol (struct resolve_ctx *ctx, gimple *stmt, tree symbol)
+parse_symbol (struct resolve_ctx *ctx, gimple stmt, tree symbol)
 {
-  gimple *def_stmt;
+  gimple def_stmt;
   enum tree_code code = TREE_CODE (symbol);
 
   switch (code)
@@ -544,15 +527,16 @@ parse_symbol (struct resolve_ctx *ctx, gimple *stmt, tree symbol)
 	  /* Does a variable have a node in symtable  */
 	  if (TREE_STATIC (symbol) || DECL_EXTERNAL (symbol) || in_lto_p)
 	    {
-	      varpool_node *sym_node = varpool_node::get (symbol);
+	      tree init;
+	      varpool_node *sym_node = varpool_get_node (symbol);
 
-	      if (sym_node->ctor_useable_for_folding_p ())
-		return parse_symbol (ctx, stmt, ctor_for_folding (symbol));
+	      if ((init = ctor_for_folding (symbol)) != error_mark_node)
+		return parse_symbol (ctx, stmt, init);
 
 	      if (!is_read_only (ctx, sym_node))
 		result = resolve_lattice_meet (result, DYNAMIC);
 
-	      tree init = DECL_INITIAL (symbol);
+	      init = DECL_INITIAL (symbol);
 	      if (init)
 		{
 		  resolve_lattice_t parse_r = parse_symbol (ctx, stmt, init);
@@ -580,7 +564,7 @@ parse_symbol (struct resolve_ctx *ctx, gimple *stmt, tree symbol)
 }
 
 static resolve_lattice_t
-parse_gimple_stmt (struct resolve_ctx *ctx, gimple *stmt)
+parse_gimple_stmt (struct resolve_ctx *ctx, gimple stmt)
 {
   unsigned HOST_WIDE_INT i;
   resolve_lattice_t result = UNDEFINED;
@@ -684,7 +668,7 @@ resolve_dlsym_calls (void)
   FOR_EACH_FUNCTION_WITH_GIMPLE_BODY (node)
     // TODO handle inlined functions during recurive traversing
     if (!node->global.inlined_to)
-      node->get_body ();
+      cgraph_get_body (node);
 
   FOR_EACH_FUNCTION_WITH_GIMPLE_BODY (node)
     {
@@ -709,6 +693,10 @@ namespace
       SIMPLE_IPA_PASS,
       "dlsym",			/* name */
       OPTGROUP_NONE,		/* optinfo_flags */
+#if BUILDING_GCC_VERSION == 4009
+      false,			/* has_gate */
+      true,			/* has_execute */
+#endif
       TV_NONE,			/* tv_id */
       0,                        /* properties_required */
       0,			/* properties_provided */
@@ -725,7 +713,11 @@ public:
     {
     }
 
-  virtual unsigned int execute (function *) { return resolve_dlsym_calls (); }
+#if BUILDING_GCC_VERSION >= 5000
+  virtual unsigned int execute(function *) { return resolve_dlsym_calls (); }
+#else
+  virtual unsigned int execute(void) { return resolve_dlsym_calls (); }
+#endif
   }; // class pass_dlsym
 
 } // anon namespace
@@ -772,9 +764,9 @@ plugin_init (plugin_name_args *plugin_info, plugin_gcc_version *version)
 
   struct register_pass_info pass_info;
   pass_info.pass = new pass_dlsym (g);
-  pass_info.reference_pass_name = "materialize-all-clones";
+  pass_info.reference_pass_name = "simdclone";
   pass_info.ref_pass_instance_number = 1;
-  pass_info.pos_op = PASS_POS_INSERT_AFTER;
+  pass_info.pos_op = PASS_POS_INSERT_BEFORE;
 
   register_callback (plugin_info->base_name,
 		     PLUGIN_PASS_MANAGER_SETUP, NULL,
@@ -790,19 +782,19 @@ write_dynamic_symbol_calls (struct resolve_ctx *ctx, resolve_lattice_t type)
   /* file_name:line:caller:function:type:symbols */
   if (!ctx->symbols->is_empty ())
     {
+      unsigned i;
+
       fprintf (output, "%s:%d:%s:%s:", LOCATION_FILE (ctx->loc),
 	       LOCATION_LINE (ctx->loc), caller->node->asm_name (),
 	       ctx->base_sign->func_name);
       dump_lattice_value (output, type);
       fprintf (output, ":");
 
-      for (const char **it = ctx->symbols->begin ();
-	   it != ctx->symbols->end ();
-	   ++it)
+      for (i = 0; i < ctx->symbols->length (); ++i)
 	{
-	  if (it != ctx->symbols->begin ())
+	  if (i)
 	    fprintf (output, ",");
-	  fprintf (output, "%s", *it);
+	  fprintf (output, "%s", (*ctx->symbols)[i]);
 	}
     }
   else
@@ -819,6 +811,7 @@ write_dynamic_symbol_calls (struct resolve_ctx *ctx, resolve_lattice_t type)
 void
 dump_dynamic_symbol_calls (struct resolve_ctx *ctx)
 {
+  unsigned i;
   if (ctx->symbols->is_empty ())
     {
       fprintf(dump_file, "\n\n");
@@ -829,20 +822,18 @@ dump_dynamic_symbol_calls (struct resolve_ctx *ctx)
   const char *func_name;
   struct call_info *first_call = get_current_call_info (ctx);
   if (first_call)
-    func_name = function_name (first_call->node->get_fun ());
+    func_name = function_name (get_fun_cgraph_node (first_call->node));
   else
     func_name = "";
 
   fprintf(dump_file, "\t%s:%d:%s->%s->[",
 	  LOCATION_FILE (ctx->loc), LOCATION_LINE (ctx->loc),
 	  func_name, ctx->base_sign->func_name);
-  for (const char **it = ctx->symbols->begin ();
-       it != ctx->symbols->end ();
-       ++it)
+  for (i = 0; i < ctx->symbols->length (); ++i)
     {
-      if (it != ctx->symbols->begin ())
+      if (i)
 	fprintf (dump_file, ",");
-      fprintf (dump_file, "%s", *it);
+      fprintf (dump_file, "%s", (*ctx->symbols)[i]);
     }
   fprintf(dump_file, "]\n\n");
 }
@@ -851,7 +842,7 @@ void
 dump_node (cgraph_node *node)
 {
   fprintf (dump_file, "Call graph of a node:\n");
-  node->dump (dump_file);
+  dump_cgraph_node (dump_file, node);
   fprintf (dump_file, "\n");
 }
 
