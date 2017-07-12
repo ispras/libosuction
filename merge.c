@@ -27,6 +27,8 @@ struct dso {
 		const char *path;
 		const char *srcid;
 		long long offset;
+		struct obj *srcidmain;
+		int srcidcnt;
 		int nscn;
 		struct scn *scns;
 	} *obj;
@@ -69,14 +71,11 @@ sym_hash(const char *name)
 	return h;
 }
 static inline unsigned
-obj_hash(const char *path, long long offset)
+obj_hash(const char *srcid)
 {
-	const unsigned char *c = (const void *)path;
-	unsigned h = 5381;
-	for (; *c; c++)
-		h += h*32 + *c;
-	h ^= offset;
-	return h;
+	unsigned h[4];
+	sscanf(srcid, "%8x%8x%8x%8x", h+0, h+1, h+2, h+3);
+	return h[0] ^ h[1] ^ h[2] ^ h[3];
 }
 static void
 htab_insert(struct htab *htab, unsigned hash, void *elt)
@@ -139,21 +138,20 @@ sym_htab_lookup_only(const char *name)
 	}
 }
 static struct obj **
-obj_htab_lookup(const char *path, long long offset)
+obj_htab_lookup(const char *srcid)
 {
 	if (objs_htab.used * 3 >= objs_htab.size)
 		htab_expand(&objs_htab);
-	unsigned hash = obj_hash(path, offset);
+	unsigned hash = obj_hash(srcid);
 	for (size_t i = hash; ; i++) {
-		i &= syms_htab.size - 1;
-		struct obj **ptr = (void *)(syms_htab.elts + i);
+		i &= objs_htab.size - 1;
+		struct obj **ptr = (void *)(objs_htab.elts + i);
 		if (!*ptr) {
-			syms_htab.hashes[i] = hash;
+			objs_htab.hashes[i] = hash;
 			return ptr;
 		}
-		if (syms_htab.hashes[i] == hash
-		    && offset == (*ptr)->offset
-		    && !strcmp(path, (*ptr)->path))
+		if (objs_htab.hashes[i] == hash
+		    && !strcmp(srcid, (*ptr)->srcid))
 			return ptr;
 	}
 }
@@ -178,6 +176,16 @@ input(struct dso *dso, FILE *f)
 	struct scn *s = dso->scn = calloc(dso->nscn, sizeof *dso->scn);
 	for (; o < dso->obj + dso->nobj; o++) {
 		fscanf(f, "%d %lld %ms %ms", &o->nscn, &o->offset, &o->path, &o->srcid);
+		if (o->srcid[0] != '-') {
+			struct obj **objp = obj_htab_lookup(o->srcid);
+			if (!*objp) {
+				*objp = o;
+				objs_htab.used++;
+			}
+			o->srcidmain = *objp;
+			o->srcidmain->srcidcnt++;
+			o->srcidcnt = o->srcidmain->srcidcnt;
+		}
 		o->scns = s;
 		for (; s < o->scns + o->nscn; s++) {
 			fscanf(f, "%d %lld %ms %*[^\n]", &s->used, &s->size, &s->name);
@@ -401,7 +409,7 @@ static void printsym(struct sym *sym)
 	struct obj *o = ((struct scn *)n)->objptr;
 	const char *t, *objname = o->path;
 	if ((t = strrchr(objname, '/'))) objname = t+1;
-	printf("%s:%s:%s\n", objname, o->srcid, sym->name);
+	printf("%s:%s:%d:%s\n", objname, o->srcid, o->srcidcnt, sym->name);
 }
 static void mark(struct dso *dsos, int n)
 {
