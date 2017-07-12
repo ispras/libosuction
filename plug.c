@@ -259,12 +259,15 @@ dg_print(FILE *f)
 			fprintf(f, "%c%c %d\t%s\n",
 			       "DCWU"[s->weak], "dph"[s->vis],
 			       s->section ? s->section->uid : -1, s->name);
+			struct objfile *thiso = s->section ? s->section->object : 0;
 			int ndeps = 0;
 			for (struct rel *r = s->firstrel; r; r = r->nextrel)
-				ndeps++;
+				if (r->section->object != thiso)
+					ndeps++;
 			fprintf(f, "\t%d ", ndeps);
 			for (struct rel *r = s->firstrel; r; r = r->nextrel)
-				fprintf(f, "%d ", r->section->uid);
+				if (r->section->object != thiso)
+					fprintf(f, "%d ", r->section->uid);
 			fprintf(f, "\n");
 		}
 }
