@@ -102,6 +102,16 @@ dump_lattice_value (FILE *outf, resolve_lattice_t val);
 void
 write_dynamic_symbol_calls (struct resolve_ctx *ctx, resolve_lattice_t type);
 
+static const char *
+assemble_name_raw (struct cgraph_node *node)
+{
+  const char *name = IDENTIFIER_POINTER (DECL_ASSEMBLER_NAME (node->decl));
+  if (name[0] == '*')
+    return name + 1;
+  else
+    return name;
+}
+
 static bool
 vec_constains_str (vec<const char *> *v, const char *str)
 {
@@ -471,7 +481,7 @@ parse_default_def (struct resolve_ctx *ctx, tree default_def)
   for (cs = call->node->callers; cs; cs = cs->next_caller)
     {
       resolve_lattice_t parse_result;
-      caller_name = call->node->asm_name ();
+      caller_name = assemble_name_raw (call->node);
       struct signature subsign = {caller_name, arg_num};
 
       /* FIXME recursive cycle is skipped until string are not handled,
@@ -615,7 +625,7 @@ process_calls (struct cgraph_node *node)
 
   for (cs = node->callees; cs; cs = cs->next_callee)
     for (i = 0; i < signatures.length (); ++i)
-      if (!strcmp (signatures[i].func_name, cs->callee->asm_name ()))
+      if (!strcmp (signatures[i].func_name, assemble_name_raw (cs->callee)))
 	{
 	  resolve_lattice_t result;
 	  resolve_ctx ctx;
@@ -623,7 +633,7 @@ process_calls (struct cgraph_node *node)
 
 	  if (dump_file)
 	    fprintf (dump_file, "\t%s matched to the signature\n",
-		     cs->callee->asm_name ());
+		     assemble_name_raw (cs->callee));
 
 	  ctx.base_sign = &signatures[i];
 	  ctx.loc = gimple_location (cs->call_stmt);
@@ -634,7 +644,7 @@ process_calls (struct cgraph_node *node)
 
 	  if (dump_file)
 	    {
-	      fprintf (dump_file, "\t%s set state:", cs->callee->asm_name ());
+	      fprintf (dump_file, "\t%s set state:", assemble_name_raw (cs->callee));
 	      dump_lattice_value (dump_file, result);
 	      fprintf (dump_file, "\n");
 	      if (!ctx.symbols->is_empty ())
@@ -662,7 +672,7 @@ resolve_dlsym_calls (void)
       output_file_name = dumpname;
     }
 
-  output = fopen (output_file_name, "w");
+  output = fopen (output_file_name, "a");
 
   // Fix the bodies and call graph
   FOR_EACH_FUNCTION_WITH_GIMPLE_BODY (node)
@@ -785,7 +795,7 @@ write_dynamic_symbol_calls (struct resolve_ctx *ctx, resolve_lattice_t type)
       unsigned i;
 
       fprintf (output, "%s:%d:%s:%s:", LOCATION_FILE (ctx->loc),
-	       LOCATION_LINE (ctx->loc), caller->node->asm_name (),
+	       LOCATION_LINE (ctx->loc), assemble_name_raw (caller->node),
 	       ctx->base_sign->func_name);
       dump_lattice_value (output, type);
       fprintf (output, ":");
@@ -800,7 +810,7 @@ write_dynamic_symbol_calls (struct resolve_ctx *ctx, resolve_lattice_t type)
   else
     {
       fprintf (output, "%s:%d:%s:%s:", LOCATION_FILE (ctx->loc),
-	       LOCATION_LINE (ctx->loc), caller->node->asm_name (),
+	       LOCATION_LINE (ctx->loc), assemble_name_raw (caller->node),
 	       ctx->base_sign->func_name);
       dump_lattice_value (output, type);
       fprintf (output, ":");
@@ -822,7 +832,7 @@ dump_dynamic_symbol_calls (struct resolve_ctx *ctx)
   const char *func_name;
   struct call_info *first_call = get_current_call_info (ctx);
   if (first_call)
-    func_name = function_name (get_fun_cgraph_node (first_call->node));
+    func_name = assemble_name_raw (first_call->node);
   else
     func_name = "";
 
