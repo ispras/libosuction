@@ -1,12 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdarg.h>
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
 
-#include <sys/socket.h>
-#include <sys/un.h>
+#include "wrapper-common.h"
 
 #define ORIG_CMD_SUFFIX "-real"
 #define LIBMKPRIV "libmkpriv"
@@ -19,14 +17,6 @@
 #error "Compile gcc-wrapper with -DGCC_RUN={1,2}"
 #endif
 
-static void die(const char *fmt, ...)
-{
-	va_list va;
-	va_start(va, fmt);
-	vfprintf(stderr, fmt, va);
-	va_end(va);
-	exit(1);
-}
 
 static const char *maybe_strip_lto(const char *opt)
 {
@@ -39,29 +29,9 @@ static const char *maybe_strip_lto(const char *opt)
 
 int main(int argc, char *argv[])
 {
-	int sockfd;
-	struct sockaddr_un sa = {.sun_family = AF_UNIX};
-	memcpy(sa.sun_path, "\0ldprivd", 8);
-
-	if ((sockfd = socket(AF_UNIX, SOCK_STREAM, 0)) < 0
-	    || connect(sockfd, (void *) &sa, sizeof sa) < 0)
-		die("%s\n", strerror(errno));
-
-	int cmdlen = 0;
-	for (int i = 0; i < argc; i++)
-		cmdlen += strlen(argv[i]) + 1;
-	char *cmdline = malloc(cmdlen), *c = cmdline;
-	for (int i = 0; i < argc; i++)
-		(c = stpcpy(c, argv[i]) + 1)[-1] = ' ';
-	c[-1] = 0;
-	FILE *f;
-	if (!(f = fdopen(sockfd, "w"))
-	    || fprintf(f, "C%d:", cmdlen) < 0
-	    || fwrite(cmdline, cmdlen, 1, f) != 1
-	    || fflush(f) != 0)
-		die("write error\n");
-
-	/* TODO: refactor out the common part ^ */
+#if GCC_RUN == 1
+	int sockfd = daemon_connect (argc, argv, "Compiler"[0]);
+#endif
 
 	char origcmd[strlen (argv[0]) + sizeof ORIG_CMD_SUFFIX];
 	strcpy(origcmd, argv[0]);

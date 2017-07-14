@@ -13,6 +13,7 @@ PLUGIN-PRIV = libplug-priv.so
 MERGE = merge
 DAEMON = daemon
 WRAPPER = wrapper
+WRAP_COMMON = wrapper-common.c
 GCCWRAP1 = gcc-wrapper-1
 GCCWRAP2 = gcc-wrapper-2
 
@@ -31,8 +32,10 @@ $(PLUGIN-PRIV): plug-priv.o
 
 daemon: CFLAGS += -fopenmp
 
-$(GCCWRAP1): gcc-wrapper.c
+$(WRAPPER): $(WRAP_COMMON)
+
+$(GCCWRAP1): gcc-wrapper.c $(WRAP_COMMON)
 	$(CC) $(CFLAGS) -o $@ $^ -DGCC_RUN=1
 
-$(GCCWRAP2): gcc-wrapper.c
+$(GCCWRAP2): gcc-wrapper.c $(WRAP_COMMON)
 	$(CC) $(CFLAGS) -o $@ $^ -DGCC_RUN=2
