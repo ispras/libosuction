@@ -30,18 +30,23 @@ int main()
 	{
 		int cmdlen;
 		char *cmdline = 0;
+		char tool = 0;
 		FILE *f;
 		if (!(f = fdopen(peerfd, "r"))
-		    || fscanf(f, "%d:", &cmdlen) != 1
+		    || fscanf(f, "%c%d:", &tool, &cmdlen) != 2
+		    || tool != 'L' && tool != 'C'
 		    || !(cmdline = malloc(cmdlen))
 		    || fread(cmdline, cmdlen, 1, f) != 1)
-			fprintf(stderr, "read error\n");
+			fprintf(stderr, "%c read error\n", tool);
 		else
 			printf("%s\n", cmdline);
 		free(cmdline);
 		int fn = __sync_fetch_and_add(&fileno, 1);
 		char namebuf[32];
-		snprintf(namebuf, sizeof namebuf, "deps-%03d", fn);
+		if (tool == 'L')
+			snprintf(namebuf, sizeof namebuf, "deps-%03d", fn);
+		else
+			snprintf(namebuf, sizeof namebuf, "dlsym-%03d", fn);
 		FILE *out = fopen(namebuf, "w");
 		char buf[4096];
 		size_t len;

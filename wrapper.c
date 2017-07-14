@@ -49,7 +49,7 @@ ok:;
 	c[-1] = 0;
 	FILE *f;
 	if (!(f = fdopen(sockfd, "w"))
-	    || fprintf(f, "%d:", cmdlen) < 0
+	    || fprintf(f, "L%d:", cmdlen) < 0
 	    || fwrite(cmdline, cmdlen, 1, f) != 1
 	    || fflush(f) != 0)
 		die("write error\n");
