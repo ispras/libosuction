@@ -328,7 +328,7 @@ plugin_init (plugin_name_args *i, plugin_gcc_version *v)
 
   if (!plugin_default_version_check (&gcc_version, v))
     {
-      fprintf (stderr, "GCC version does not match plugin's.");
+      fatal_error ("GCC version does not match plugin's.");
       return 1;
     }
 
