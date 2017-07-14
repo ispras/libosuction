@@ -86,6 +86,7 @@ pop_call_info (resolve_ctx *ctx)
 }
 
 static vec<struct signature> signatures;
+static char md5str[33];
 static const char *output_file_name = NULL;
 static FILE *output;
 
@@ -732,6 +733,55 @@ public:
 
 } // anon namespace
 
+void
+printmd5 (char *p, const unsigned char md5[])
+{
+  for (int i = 0; i < 16; i++)
+    {
+      *p++ = "0123456789abcdef"[md5[i] >> 4];
+      *p++ = "0123456789abcdef"[md5[i] & 15];
+    }
+  *p = '\0';
+}
+
+void
+compute_md5 (void *, void *)
+{
+  char *streamptr;
+  size_t streamsz;
+  FILE *f = open_memstream (&streamptr, &streamsz);
+
+  int save_noaddr = flag_dump_noaddr;
+  flag_dump_noaddr = 1;
+  dump_symtab (f);
+
+  cgraph_node *node;
+  FOR_EACH_DEFINED_FUNCTION (node)
+    if (cgraph_function_with_gimple_body_p (node))
+      dump_function_to_file (node->decl, f, TDF_SLIM);
+
+  flag_dump_noaddr = save_noaddr;
+
+  unsigned i;
+  for (i = 0; i < save_decoded_options_count; i++)
+    switch (save_decoded_options[i].opt_index)
+      {
+      default:
+	fprintf(f, "%s\n",
+		save_decoded_options[i].orig_option_with_args_text);
+      case OPT_o:;
+      case OPT_fplugin_:;
+      case OPT_fplugin_arg_:;
+      }
+  fclose (f);
+
+  unsigned char md5sum[16];
+  md5_buffer (streamptr, streamsz, md5sum);
+  free (streamptr);
+
+  printmd5 (md5str, md5sum);
+}
+
 void static
 parse_argument (plugin_argument *arg)
 {
@@ -779,6 +829,9 @@ plugin_init (plugin_name_args *plugin_info, plugin_gcc_version *version)
   pass_info.pos_op = PASS_POS_INSERT_BEFORE;
 
   register_callback (plugin_info->base_name,
+		     PLUGIN_ALL_IPA_PASSES_START, compute_md5,
+		     NULL);
+  register_callback (plugin_info->base_name,
 		     PLUGIN_PASS_MANAGER_SETUP, NULL,
 		     &pass_info);
   return 0;
@@ -789,13 +842,14 @@ write_dynamic_symbol_calls (struct resolve_ctx *ctx, resolve_lattice_t type)
 {
   struct call_info *caller = get_current_call_info (ctx);
   gcc_assert (caller);
-  /* file_name:line:caller:function:type:symbols */
+  /* file_name:line:md5:caller:function:type:symbols */
   if (!ctx->symbols->is_empty ())
     {
       unsigned i;
 
-      fprintf (output, "%s:%d:%s:%s:", LOCATION_FILE (ctx->loc),
-	       LOCATION_LINE (ctx->loc), assemble_name_raw (caller->node),
+      fprintf (output, "%s:%d:%s:%s:%s:", LOCATION_FILE (ctx->loc),
+	       LOCATION_LINE (ctx->loc), md5str,
+	       assemble_name_raw (caller->node),
 	       ctx->base_sign->func_name);
       dump_lattice_value (output, type);
       fprintf (output, ":");
@@ -809,8 +863,9 @@ write_dynamic_symbol_calls (struct resolve_ctx *ctx, resolve_lattice_t type)
     }
   else
     {
-      fprintf (output, "%s:%d:%s:%s:", LOCATION_FILE (ctx->loc),
-	       LOCATION_LINE (ctx->loc), assemble_name_raw (caller->node),
+      fprintf (output, "%s:%d:%s:%s:%s:", LOCATION_FILE (ctx->loc),
+	       LOCATION_LINE (ctx->loc), md5str,
+	       assemble_name_raw (caller->node),
 	       ctx->base_sign->func_name);
       dump_lattice_value (output, type);
       fprintf (output, ":");
@@ -828,7 +883,7 @@ dump_dynamic_symbol_calls (struct resolve_ctx *ctx)
       return;
     }
 
-  fprintf (dump_file, "File:Line:Function->Callee->[Symbols]:\n");
+  fprintf (dump_file, "File:Line:md5:Function->Callee->[Symbols]:\n");
   const char *func_name;
   struct call_info *first_call = get_current_call_info (ctx);
   if (first_call)
@@ -836,9 +891,9 @@ dump_dynamic_symbol_calls (struct resolve_ctx *ctx)
   else
     func_name = "";
 
-  fprintf(dump_file, "\t%s:%d:%s->%s->[",
+  fprintf(dump_file, "\t%s:%d:%s:%s->%s->[",
 	  LOCATION_FILE (ctx->loc), LOCATION_LINE (ctx->loc),
-	  func_name, ctx->base_sign->func_name);
+	  md5str, func_name, ctx->base_sign->func_name);
   for (i = 0; i < ctx->symbols->length (); ++i)
     {
       if (i)

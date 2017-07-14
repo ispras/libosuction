@@ -23,6 +23,10 @@
 #include "tree-ssa-alias.h"
 #include "gimple.h"
 #include "gimple-iterator.h"
+#include "toplev.h"
+#include "opts.h"
+#include "md5.h"
+#include "tree-cfg.h"
 
 #if BUILDING_GCC_VERSION == 4009
 static inline struct function *get_fun_cgraph_node (cgraph_node *node)
@@ -42,8 +46,10 @@ static inline struct function *get_fun_cgraph_node (cgraph_node *node)
 #if BUILDING_GCC_VERSION >= 5000
 #define cgraph_get_body(node) (node)->get_body()
 #define varpool_get_node(decl) varpool_node::get(decl)
+#define dump_symtab(f) symtab_node::dump_table (f)
 #define dump_cgraph_node(file, node) (node)->dump(file)
 #define get_fun_cgraph_node(node) (node)->get_fun ()
+#define cgraph_function_with_gimple_body_p(node) node->has_gimple_body_p ()
 
 #if BUILDING_GCC_VERSION >= 6000
 typedef gimple *gimple_ptr;
