@@ -300,6 +300,8 @@ compmd5 (void *, void *dump_p)
       case OPT_o:;
       case OPT_fplugin_:;
       case OPT_fplugin_arg_:;
+      case OPT_flto_:;
+      case OPT_flto:;
       }
   fclose (f);
 
@@ -329,6 +331,9 @@ plugin_init (plugin_name_args *i, plugin_gcc_version *v)
       fprintf (stderr, "GCC version does not match plugin's.");
       return 1;
     }
+
+  if (flag_ltrans || flag_wpa)
+    return 0;
 
   if (user_label_prefix && strlen (user_label_prefix))
     fatal_error ("the plugin does not make provision for -fleading-underscore");
