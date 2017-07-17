@@ -33,8 +33,13 @@ struct resolve_ctx
 {
   /* Initial signature of dlsym */
   struct signature *base_sign;
+  /* Caller node */
+  struct cgraph_node *node;
   /* Call location */
   location_t loc;
+  /* Resolve status */
+  resolve_lattice_t status;
+
   /* Call stack emulation */
   vec<const char *> *considered_functions;
   /* List of possible symbols, keep only unique symbols */
@@ -44,10 +49,10 @@ struct resolve_ctx
   vec<call_info> *calls_chain;
 };
 
-
 static void
 init_resolve_ctx (struct resolve_ctx *ctx)
 {
+  ctx->status = UNDEFINED;
   ctx->considered_functions = new vec<const char *> ();
   ctx->symbols = new vec<const char *> ();
   ctx->calls_chain = new vec<call_info> ();
@@ -62,7 +67,7 @@ free_resolve_ctx (struct resolve_ctx *ctx)
 }
 
 static struct call_info *
-get_current_call_info (resolve_ctx *ctx)
+get_current_call_info (struct resolve_ctx *ctx)
 {
   if (ctx->calls_chain->length ())
     return &ctx->calls_chain->last ();
@@ -79,12 +84,13 @@ push_call_info (struct resolve_ctx *ctx, struct cgraph_node *node,
 }
 
 static void
-pop_call_info (resolve_ctx *ctx)
+pop_call_info (struct resolve_ctx *ctx)
 {
   ctx->calls_chain->pop ();
   ctx->considered_functions->pop ();
 }
 
+static vec<struct resolve_ctx *> resolve_contexts;
 static vec<struct signature> signatures;
 static char md5str[33];
 static const char *output_file_name = NULL;
@@ -97,11 +103,11 @@ parse_gimple_stmt (struct resolve_ctx *ctx, gimple stmt);
 void
 dump_dynamic_symbol_calls (struct resolve_ctx *ctx);
 void
-dump_node (cgraph_node *node);
+dump_node (struct cgraph_node *node);
 void
 dump_lattice_value (FILE *outf, resolve_lattice_t val);
 void
-write_dynamic_symbol_calls (struct resolve_ctx *ctx, resolve_lattice_t type);
+write_dynamic_symbol_calls (struct resolve_ctx *ctx);
 
 static const char *
 assemble_name_raw (struct cgraph_node *node)
@@ -117,9 +123,12 @@ static bool
 vec_constains_str (vec<const char *> *v, const char *str)
 {
   unsigned i;
-  for (i = 0; i < v->length(); ++ i)
-    if (!strcmp ((*v)[i], str))
+  const char *vstr;
+
+  for (i = 0; v->iterate (i, &vstr); ++i)
+    if (!strcmp (vstr, str))
       return true;
+
   return false;
 }
 
@@ -127,9 +136,12 @@ static bool
 vec_add_unique_str (vec<const char *> *v, const char *str)
 {
   unsigned i;
-  for (i = 0; i < v->length(); ++ i)
-    if (!strcmp ((*v)[i], str))
+  const char *vstr;
+
+  for (i = 0; v->iterate (i, &vstr); ++i)
+    if (!strcmp (vstr, str))
       return false;
+
   v->safe_push (str);
   return true;
 }
@@ -628,32 +640,33 @@ process_calls (struct cgraph_node *node)
     for (i = 0; i < signatures.length (); ++i)
       if (!strcmp (signatures[i].func_name, assemble_name_raw (cs->callee)))
 	{
-	  resolve_lattice_t result;
-	  resolve_ctx ctx;
-	  init_resolve_ctx (&ctx);
-
 	  if (dump_file)
 	    fprintf (dump_file, "\t%s matched to the signature\n",
 		     assemble_name_raw (cs->callee));
 
-	  ctx.base_sign = &signatures[i];
-	  ctx.loc = gimple_location (cs->call_stmt);
-	  push_call_info (&ctx, node, cs->call_stmt, &signatures[i]);
+	  resolve_ctx *ctx = XNEW (struct resolve_ctx);
+	  init_resolve_ctx (ctx);
+	  ctx->base_sign = &signatures[i];
+	  ctx->loc = gimple_location (cs->call_stmt);
+	  ctx->node = node;
+
+	  push_call_info (ctx, node, cs->call_stmt, &signatures[i]);
 
 	  symbol = gimple_call_arg (cs->call_stmt, signatures[i].sym_pos);
-	  result = parse_symbol (&ctx, cs->call_stmt, symbol);
+	  ctx->status = parse_symbol (ctx, cs->call_stmt, symbol);
+
+	  pop_call_info (ctx);
 
 	  if (dump_file)
 	    {
 	      fprintf (dump_file, "\t%s set state:", assemble_name_raw (cs->callee));
-	      dump_lattice_value (dump_file, result);
+	      dump_lattice_value (dump_file, ctx->status);
 	      fprintf (dump_file, "\n");
-	      if (!ctx.symbols->is_empty ())
-		dump_dynamic_symbol_calls (&ctx);
+	      dump_dynamic_symbol_calls (ctx);
 	    }
-	  write_dynamic_symbol_calls (&ctx, result);
-	  pop_call_info (&ctx);
-	  free_resolve_ctx (&ctx);
+
+	  resolve_contexts.safe_push (ctx);
+	  write_dynamic_symbol_calls (ctx);
 	}
 }
 
@@ -782,6 +795,13 @@ compute_md5 (void *, void *)
   printmd5 (md5str, md5sum);
 }
 
+void
+plugin_finalize (void *, void *)
+{
+  while (!resolve_contexts.is_empty())
+    free_resolve_ctx (resolve_contexts.pop ());
+}
+
 void static
 parse_argument (plugin_argument *arg)
 {
@@ -834,40 +854,42 @@ plugin_init (plugin_name_args *plugin_info, plugin_gcc_version *version)
   register_callback (plugin_info->base_name,
 		     PLUGIN_PASS_MANAGER_SETUP, NULL,
 		     &pass_info);
+  register_callback (plugin_info->base_name,
+		     PLUGIN_FINISH, plugin_finalize,
+		     NULL);
   return 0;
 }
 
 void
-write_dynamic_symbol_calls (struct resolve_ctx *ctx, resolve_lattice_t type)
+write_dynamic_symbol_calls (struct resolve_ctx *ctx)
 {
-  struct call_info *caller = get_current_call_info (ctx);
-  gcc_assert (caller);
   /* file_name:line:md5:caller:function:type:symbols */
   if (!ctx->symbols->is_empty ())
     {
       unsigned i;
+      const char *symbol;
 
       fprintf (output, "%s:%d:%s:%s:%s:", LOCATION_FILE (ctx->loc),
 	       LOCATION_LINE (ctx->loc), md5str,
-	       assemble_name_raw (caller->node),
+	       assemble_name_raw (ctx->node),
 	       ctx->base_sign->func_name);
-      dump_lattice_value (output, type);
+      dump_lattice_value (output, ctx->status);
       fprintf (output, ":");
 
-      for (i = 0; i < ctx->symbols->length (); ++i)
+      for (i = 0; ctx->symbols->iterate (i, &symbol); ++i)
 	{
 	  if (i)
 	    fprintf (output, ",");
-	  fprintf (output, "%s", (*ctx->symbols)[i]);
+	  fprintf (output, "%s", symbol);
 	}
     }
   else
     {
       fprintf (output, "%s:%d:%s:%s:%s:", LOCATION_FILE (ctx->loc),
 	       LOCATION_LINE (ctx->loc), md5str,
-	       assemble_name_raw (caller->node),
+	       assemble_name_raw (ctx->node),
 	       ctx->base_sign->func_name);
-      dump_lattice_value (output, type);
+      dump_lattice_value (output, ctx->status);
       fprintf (output, ":");
     }
   fprintf(output, "\n");
@@ -877,6 +899,7 @@ void
 dump_dynamic_symbol_calls (struct resolve_ctx *ctx)
 {
   unsigned i;
+  const char *symbol;
   if (ctx->symbols->is_empty ())
     {
       fprintf(dump_file, "\n\n");
@@ -884,27 +907,20 @@ dump_dynamic_symbol_calls (struct resolve_ctx *ctx)
     }
 
   fprintf (dump_file, "File:Line:md5:Function->Callee->[Symbols]:\n");
-  const char *func_name;
-  struct call_info *first_call = get_current_call_info (ctx);
-  if (first_call)
-    func_name = assemble_name_raw (first_call->node);
-  else
-    func_name = "";
-
   fprintf(dump_file, "\t%s:%d:%s:%s->%s->[",
 	  LOCATION_FILE (ctx->loc), LOCATION_LINE (ctx->loc),
-	  md5str, func_name, ctx->base_sign->func_name);
-  for (i = 0; i < ctx->symbols->length (); ++i)
+	  md5str, assemble_name_raw (ctx->node), ctx->base_sign->func_name);
+  for (i = 0; ctx->symbols->iterate (i, &symbol); ++i)
     {
       if (i)
 	fprintf (dump_file, ",");
-      fprintf (dump_file, "%s", (*ctx->symbols)[i]);
+      fprintf (dump_file, "%s", symbol);
     }
   fprintf(dump_file, "]\n\n");
 }
 
 void
-dump_node (cgraph_node *node)
+dump_node (struct cgraph_node *node)
 {
   fprintf (dump_file, "Call graph of a node:\n");
   dump_cgraph_node (dump_file, node);
