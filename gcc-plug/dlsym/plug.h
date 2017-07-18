@@ -27,6 +27,7 @@
 #include "opts.h"
 #include "md5.h"
 #include "tree-cfg.h"
+#include "output.h"
 
 #if BUILDING_GCC_VERSION == 4009
 static inline struct function *get_fun_cgraph_node (cgraph_node *node)

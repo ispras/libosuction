@@ -107,6 +107,8 @@ dump_node (struct cgraph_node *node);
 void
 dump_lattice_value (FILE *outf, resolve_lattice_t val);
 void
+dump_decl_section (FILE *outf, tree decl);
+void
 write_dynamic_symbol_calls (struct resolve_ctx *ctx);
 
 static const char *
@@ -666,7 +668,6 @@ process_calls (struct cgraph_node *node)
 	    }
 
 	  resolve_contexts.safe_push (ctx);
-	  write_dynamic_symbol_calls (ctx);
 	}
 }
 
@@ -674,19 +675,6 @@ static unsigned int
 resolve_dlsym_calls (void)
 {
   struct cgraph_node *node;
-
-  if (output_file_name == NULL)
-    {
-      int len = strlen (dump_base_name);
-      char *dumpname = XNEWVEC (char, len + 6);
-
-      memcpy (dumpname, dump_base_name, len + 1);
-      strip_off_ending (dumpname, len);
-      strcat (dumpname, ".dlsym");
-      output_file_name = dumpname;
-    }
-
-  output = fopen (output_file_name, "a");
 
   // Fix the bodies and call graph
   FOR_EACH_FUNCTION_WITH_GIMPLE_BODY (node)
@@ -702,7 +690,6 @@ resolve_dlsym_calls (void)
       process_calls (node);
     }
 
-  fclose (output);
   if (dump_file)
     fprintf (dump_file, "Dynamic symbol resolving pass ended\n\n");
   return 0;
@@ -798,8 +785,30 @@ compute_md5 (void *, void *)
 void
 plugin_finalize (void *, void *)
 {
+  if (output_file_name == NULL)
+    {
+      int len = strlen (dump_base_name);
+      char *dumpname = XNEWVEC (char, len + 6);
+
+      memcpy (dumpname, dump_base_name, len + 1);
+      strip_off_ending (dumpname, len);
+      strcat (dumpname, ".dlsym");
+      output_file_name = dumpname;
+    }
+
+  output = fopen (output_file_name, "w");
+
   while (!resolve_contexts.is_empty())
-    free_resolve_ctx (resolve_contexts.pop ());
+    {
+      struct resolve_ctx *ctx = resolve_contexts.pop ();
+      gcc_assert (ctx->node != NULL);
+      gcc_assert (ctx->node->decl != NULL);
+
+      write_dynamic_symbol_calls (ctx);
+      free_resolve_ctx (ctx);
+    }
+
+  fclose (output);
 }
 
 void static
@@ -863,34 +872,23 @@ plugin_init (plugin_name_args *plugin_info, plugin_gcc_version *version)
 void
 write_dynamic_symbol_calls (struct resolve_ctx *ctx)
 {
-  /* file_name:line:md5:caller:function:type:symbols */
-  if (!ctx->symbols->is_empty ())
-    {
-      unsigned i;
-      const char *symbol;
+  unsigned i;
+  const char *symbol;
 
-      fprintf (output, "%s:%d:%s:%s:%s:", LOCATION_FILE (ctx->loc),
-	       LOCATION_LINE (ctx->loc), md5str,
-	       assemble_name_raw (ctx->node),
-	       ctx->base_sign->func_name);
-      dump_lattice_value (output, ctx->status);
-      fprintf (output, ":");
+  /* Output the header: "<file>:<line>:<srcid>:<section>:<caller>:<status>:" */
+  fprintf (output, "%s:%d:%s:", LOCATION_FILE (ctx->loc),
+	   LOCATION_LINE (ctx->loc), md5str);
+  dump_decl_section (output, ctx->node->decl);
+  fprintf (output, ":%s:", assemble_name_raw (ctx->node));
+  dump_lattice_value (output, ctx->status);
+  fprintf (output, ":");
 
-      for (i = 0; ctx->symbols->iterate (i, &symbol); ++i)
-	{
-	  if (i)
-	    fprintf (output, ",");
-	  fprintf (output, "%s", symbol);
-	}
-    }
-  else
+  /* Output symbols separated by comma */
+  for (i = 0; ctx->symbols->iterate (i, &symbol); ++i)
     {
-      fprintf (output, "%s:%d:%s:%s:%s:", LOCATION_FILE (ctx->loc),
-	       LOCATION_LINE (ctx->loc), md5str,
-	       assemble_name_raw (ctx->node),
-	       ctx->base_sign->func_name);
-      dump_lattice_value (output, ctx->status);
-      fprintf (output, ":");
+      if (i)
+	fprintf (output, ",");
+      fprintf (output, "%s", symbol);
     }
   fprintf(output, "\n");
 }
@@ -947,5 +945,22 @@ dump_lattice_value (FILE *outf, resolve_lattice_t val)
     default:
       gcc_unreachable ();
     }
+}
+
+void
+dump_decl_section (FILE *outf, tree decl)
+{
+  const char *section_name;
+  section *sect = function_section (decl);
+  gcc_assert (sect != NULL);
+
+  if (sect->common.flags & SECTION_NAMED)
+    section_name = sect->named.name;
+  else if (sect == text_section)
+    section_name = ".text";
+  else
+    gcc_unreachable ();
+
+  fprintf (outf, "%s", section_name);
 }
 
