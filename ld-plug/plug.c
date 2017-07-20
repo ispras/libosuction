@@ -7,6 +7,8 @@
 
 #include <elf.h>
 
+#include "confdef.h"
+
 /* Some versions of the elf headers define it as signed int.  */
 #undef SHF_EXCLUDE
 #define SHF_EXCLUDE	     (1U << 31)
