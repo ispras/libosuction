@@ -176,6 +176,7 @@ input(struct dso *dso, FILE *f)
 	struct scn *s = dso->scn = calloc(dso->nscn, sizeof *dso->scn);
 	for (; o < dso->obj + dso->nobj; o++) {
 		fscanf(f, "%d %lld %ms %ms", &o->nscn, &o->offset, &o->path, &o->srcid);
+		o->srcidmain = o;
 		if (o->srcid[0] != '-') {
 			struct obj **objp = obj_htab_lookup(o->srcid);
 			if (!*objp) {
@@ -184,7 +185,6 @@ input(struct dso *dso, FILE *f)
 			}
 			o->srcidmain = *objp;
 			o->srcidmain->srcidcnt++;
-			o->srcidcnt = o->srcidmain->srcidcnt;
 		}
 		o->scns = s;
 		for (; s < o->scns + o->nscn; s++) {
@@ -406,10 +406,10 @@ static void printsym(struct sym *sym)
 {
 	if (sym->weak == 'C') return;
 	struct node *n = sym->defscn;
-	struct obj *o = ((struct scn *)n)->objptr;
+	struct obj *o = ((struct scn *)n)->objptr, *osrcid = o->srcidmain;
 	const char *t, *objname = o->path;
 	if ((t = strrchr(objname, '/'))) objname = t+1;
-	printf("%s:%s:%d:%s\n", objname, o->srcid, o->srcidcnt, sym->name);
+	printf("%s:%s:%d:%s\n", objname, o->srcid, osrcid->srcidcnt, sym->name);
 }
 static void mark(struct dso *dsos, int n)
 {
