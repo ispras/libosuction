@@ -19,14 +19,10 @@ int main()
 		goto err;
 
 	int fileno = 0;
-#if 0
 #pragma omp parallel
 #pragma omp master
 	while ((peerfd = accept(sockfd, 0, 0)) >= 0)
 #pragma omp task firstprivate(peerfd) shared(fileno)
-#else
-        while ((peerfd = accept(sockfd, 0, 0)) >= 0)
-#endif
 	{
 		int cmdlen;
 		char *cmdline = 0;
