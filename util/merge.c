@@ -404,7 +404,6 @@ static void dfs(struct node *n)
 }
 static void printsym(struct sym *sym)
 {
-	if (sym->weak == 'C') return;
 	struct node *n = sym->defscn;
 	struct obj *o = ((struct scn *)n)->objptr, *osrcid = o->srcidmain;
 	const char *t, *objname = o->path;
@@ -425,6 +424,7 @@ static void mark(struct dso *dsos, int n)
 	for (struct dso *dso = dsos; dso < dsos + n; dso++)
 		for (struct sym *y = dso->sym; y < dso->sym + dso->nsym; y++) {
 			if (y->weak == 'U') continue;
+			if (y->weak == 'C') continue;
 			if (!y->n.preorderidx) {
 				nloc++;
 				y->n.stacknext = &locstack->n; locstack = y;
