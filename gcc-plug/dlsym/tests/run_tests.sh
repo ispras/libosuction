@@ -1,5 +1,5 @@
 #!/bin/bash
-PLUGIN_ARG="-fplugin-arg-libplug-sign-dlsym=1"
+PLUGIN_ARG="-fplugin-arg-libplug-sign-dlsym=1 -fplugin-arg-libplug-in=signs.txt"
 
 function dump_contains() {
   echo $(grep -cPR "$2" $1)
@@ -89,6 +89,9 @@ echo $(simple_test cycle_cgraph.c "caller2->dlsym->\[bar\]" 1 "Symbol Set" )
 echo $(simple_test cycle_cgraph2.c "dlsym matched to the signature" 1 "Signature"  )
 echo $(simple_test cycle_cgraph2.c "dlsym set state:CONSTANT" 1 "CONSTANT" )
 echo $(simple_test cycle_cgraph2.c "function_caller->dlsym->\[bar\]" 1 "Symbol Set" )
+echo $(simple_test dlvsym.c "dlvsym matched to the signature" 1 "Signature")
+echo $(simple_test dlvsym.c "dlvsym set state:CONSTANT" 1 "CONSTANT")
+echo $(simple_test dlvsym.c "main->dlvsym->\[bar\]" 1 "Symbol Set")
 echo $(simple_test func_call.c "dlsym matched to the signature" 1 "Signature"  )
 echo $(simple_test func_call.c "dlsym set state:DYNAMIC" 1 "DYNAMIC")
 echo $(simple_test func_macro.c "dlsym matched to the signature" 1 "Signature"  )

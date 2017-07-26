@@ -795,8 +795,11 @@ plugin_finalize (void *, void *)
       fclose (output);
     }
 
-  while (!resolve_contexts.is_empty())
+  while (!resolve_contexts.is_empty ())
     free_resolve_ctx (resolve_contexts.pop ());
+
+  while (!signatures.is_empty ())
+    free ((char *) signatures.pop ().func_name);
 }
 
 void static
@@ -811,16 +814,42 @@ parse_argument (plugin_argument *arg)
       && arg_key[2] == 'g' && arg_key[3] == 'n'
       && arg_key[4] == '-')
     {
-      struct signature initial = { &arg_key[5], atoi (arg_value) };
+      struct signature initial = { xstrdup (&arg_key[5]), atoi (arg_value) };
       signatures.safe_push (initial);
+      return;
     }
 
-  /* Read the name of output file, for instance:
-     -fplugin-libplug-out=dlsym.out
-     the name of output file would be 'dlsym.out'. */
+  /* Read a file descriptor to output symbols:
+     -fplugin-libplug-out=1 */
   if (arg_key[0] == 'o' && arg_key[1] == 'u'
       && arg_key[2] == 't' && arg_key[3] == '\0')
-    output_fd = arg_value;
+    {
+      output_fd = arg_value;
+      return;
+    }
+
+  /* Read the signatures from an input file:
+     -fplugin-libplug-in=signs.txt
+     in format:
+     <signature name> <symbol position> */
+  if (arg_key[0] == 'i' && arg_key[1] == 'n' && arg_key[2] == '\0')
+    {
+      int spos;
+      const char *wname;
+      FILE *input = fopen (arg_value, "r");
+
+      if (!input)
+	fatal_error (xstrerror (errno));
+
+      while (fscanf (input, "%ms %d", &wname, &spos) != EOF)
+	{
+	  struct signature sign = { wname, spos };
+	  signatures.safe_push (sign);
+	}
+
+      fclose (input);
+      return;
+    }
 }
 
 void static
