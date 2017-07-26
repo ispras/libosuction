@@ -796,13 +796,7 @@ plugin_finalize (void *, void *)
     }
 
   while (!resolve_contexts.is_empty())
-    {
-      struct resolve_ctx *ctx = resolve_contexts.pop ();
-      gcc_assert (ctx->node != NULL);
-      gcc_assert (ctx->node->decl != NULL);
-
-      free_resolve_ctx (ctx);
-    }
+    free_resolve_ctx (resolve_contexts.pop ());
 }
 
 void static
@@ -872,6 +866,8 @@ write_dynamic_symbol_calls (FILE *output, vec<struct resolve_ctx *> *ctxs)
 
   for (i = 0; ctxs->iterate (i, &ctx); ++i)
     {
+      gcc_assert (ctx->node);
+      gcc_assert (ctx->node->decl);
       /* Output the header in the following format:
 	 "<file>:<line>:<srcid>:<section>:<caller>:<status>:" */
       fprintf (output, "%s:%d:%s:", LOCATION_FILE (ctx->loc),
