@@ -28,6 +28,7 @@
 #include "md5.h"
 #include "tree-cfg.h"
 #include "output.h"
+#include "diagnostic-core.h"
 
 #if BUILDING_GCC_VERSION == 4009
 static inline struct function *get_fun_cgraph_node (cgraph_node *node)
@@ -51,6 +52,7 @@ static inline struct function *get_fun_cgraph_node (cgraph_node *node)
 #define dump_cgraph_node(file, node) (node)->dump(file)
 #define get_fun_cgraph_node(node) (node)->get_fun ()
 #define cgraph_function_with_gimple_body_p(node) node->has_gimple_body_p ()
+#define fatal_error(...) fatal_error (UNKNOWN_LOCATION, __VA_ARGS__)
 
 #if BUILDING_GCC_VERSION >= 6000
 typedef gimple *gimple_ptr;

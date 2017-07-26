@@ -93,8 +93,7 @@ pop_call_info (struct resolve_ctx *ctx)
 static vec<struct resolve_ctx *> resolve_contexts;
 static vec<struct signature> signatures;
 static char md5str[33];
-static const char *output_file_name = NULL;
-static FILE *output;
+static const char *output_fd = NULL;
 
 static resolve_lattice_t
 parse_symbol (struct resolve_ctx *ctx, gimple stmt, tree symbol);
@@ -109,7 +108,7 @@ dump_lattice_value (FILE *outf, resolve_lattice_t val);
 void
 dump_decl_section (FILE *outf, tree decl);
 void
-write_dynamic_symbol_calls (struct resolve_ctx *ctx);
+write_dynamic_symbol_calls (FILE *outf, vec<struct resolve_ctx *> *ctxs);
 
 static const char *
 assemble_name_raw (struct cgraph_node *node)
@@ -785,18 +784,16 @@ compute_md5 (void *, void *)
 void
 plugin_finalize (void *, void *)
 {
-  if (output_file_name == NULL)
+  if (output_fd)
     {
-      int len = strlen (dump_base_name);
-      char *dumpname = XNEWVEC (char, len + 6);
+      FILE *output = fdopen (atoi (output_fd), "w");
+      if (!output)
+	fatal_error (xstrerror (errno));
 
-      memcpy (dumpname, dump_base_name, len + 1);
-      strip_off_ending (dumpname, len);
-      strcat (dumpname, ".dlsym");
-      output_file_name = dumpname;
+      write_dynamic_symbol_calls (output, &resolve_contexts);
+
+      fclose (output);
     }
-
-  output = fopen (output_file_name, "w");
 
   while (!resolve_contexts.is_empty())
     {
@@ -804,11 +801,8 @@ plugin_finalize (void *, void *)
       gcc_assert (ctx->node != NULL);
       gcc_assert (ctx->node->decl != NULL);
 
-      write_dynamic_symbol_calls (ctx);
       free_resolve_ctx (ctx);
     }
-
-  fclose (output);
 }
 
 void static
@@ -832,7 +826,7 @@ parse_argument (plugin_argument *arg)
      the name of output file would be 'dlsym.out'. */
   if (arg_key[0] == 'o' && arg_key[1] == 'u'
       && arg_key[2] == 't' && arg_key[3] == '\0')
-    output_file_name = arg_value;
+    output_fd = arg_value;
 }
 
 void static
@@ -870,27 +864,32 @@ plugin_init (plugin_name_args *plugin_info, plugin_gcc_version *version)
 }
 
 void
-write_dynamic_symbol_calls (struct resolve_ctx *ctx)
+write_dynamic_symbol_calls (FILE *output, vec<struct resolve_ctx *> *ctxs)
 {
-  unsigned i;
+  unsigned i, j;
   const char *symbol;
+  struct resolve_ctx *ctx;
 
-  /* Output the header: "<file>:<line>:<srcid>:<section>:<caller>:<status>:" */
-  fprintf (output, "%s:%d:%s:", LOCATION_FILE (ctx->loc),
-	   LOCATION_LINE (ctx->loc), md5str);
-  dump_decl_section (output, ctx->node->decl);
-  fprintf (output, ":%s:", assemble_name_raw (ctx->node));
-  dump_lattice_value (output, ctx->status);
-  fprintf (output, ":");
-
-  /* Output symbols separated by comma */
-  for (i = 0; ctx->symbols->iterate (i, &symbol); ++i)
+  for (i = 0; ctxs->iterate (i, &ctx); ++i)
     {
-      if (i)
-	fprintf (output, ",");
-      fprintf (output, "%s", symbol);
+      /* Output the header in the following format:
+	 "<file>:<line>:<srcid>:<section>:<caller>:<status>:" */
+      fprintf (output, "%s:%d:%s:", LOCATION_FILE (ctx->loc),
+	       LOCATION_LINE (ctx->loc), md5str);
+      dump_decl_section (output, ctx->node->decl);
+      fprintf (output, ":%s:", assemble_name_raw (ctx->node));
+      dump_lattice_value (output, ctx->status);
+      fprintf (output, ":");
+
+      /* Output symbols separated by comma */
+      for (j = 0; ctx->symbols->iterate (j, &symbol); ++j)
+	{
+	  if (j)
+	    fprintf (output, ",");
+	  fprintf (output, "%s", symbol);
+	}
+      fprintf(output, "\n");
     }
-  fprintf(output, "\n");
 }
 
 void
