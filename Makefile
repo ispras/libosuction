@@ -18,6 +18,7 @@ GCC_PLUG_LIBS = $(addprefix gcc-plug/, $(join hide/ dlsym/, $(GCC_PLUG_NAMES:%=l
 WRAP_COMMON = $(addprefix util/, wrapper-common.h wrapper-common.c)
 MERGE = util/merge
 DAEMON = util/daemon
+AUXILIARY = util/dlsym-signs.txt
 GCC_WRAP = $(addprefix util/, gcc-wrapper-1 gcc-wrapper-2)
 LD_WRAP = $(addprefix util/, wrapper-1 wrapper-2)
 
@@ -27,7 +28,7 @@ ALL = $(LD_PLUG_LIBS) $(GCC_PLUG_LIBS) $(TOOLS)
 
 all: $(ALL)
 install: all
-	cp $(GCC_PLUG_LIBS) $(plugdir)
+	cp $(GCC_PLUG_LIBS) $(AUXILIARY) $(plugdir)
 	mkdir -p $(plugdir)/ld && cp $(LD_PLUG_LIBS) $(plugdir)/ld
 export
 check: all

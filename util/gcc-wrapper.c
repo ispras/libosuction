@@ -9,8 +9,11 @@
 #define ORIG_CMD_SUFFIX "-real"
 #define LIBMKPRIV "libmkpriv"
 #define LIBDLSYM "libplug"
+#define SIGNDLSYM "dlsym-signs"
 #define DLSYMPLUG       PLUGDIR LIBDLSYM ".so"
 #define MKPRIVPLUG      PLUGDIR LIBMKPRIV ".so"
+#define MERGED_PRIVDATA PLUGDIR "merged.vis"
+#define DLSYMIN         PLUGDIR SIGNDLSYM ".txt"
 
 #if (!(GCC_RUN == 1 || GCC_RUN == 2))
 #error "Compile gcc-wrapper with -DGCC_RUN={1,2}"
@@ -36,7 +39,7 @@ int main(int argc, char *argv[])
 	strcpy(origcmd, argv[0]);
 	strcat(origcmd, ORIG_CMD_SUFFIX);
 
-	const char *newargv[argc + 4 + 1];
+	const char *newargv[argc + 5 + 1];
 	int newargc = 0;
 	for (int i = 0; i < argc; i++)
 		newargv[newargc++] = maybe_strip_lto(argv[i]);
@@ -45,6 +48,7 @@ int main(int argc, char *argv[])
 	char optstr[64];
 	snprintf(optstr, sizeof optstr, "-fplugin-arg-" LIBDLSYM "-out=%d", sockfd);
 	newargv[newargc++] = "-fplugin=" DLSYMPLUG;
+	newargv[newargc++] = "-fplugin-arg-" LIBDLSYM "-in=" DLSYMIN;
 	newargv[newargc++] = optstr;
 	newargv[newargc++] = "-fplugin=" MKPRIVPLUG;
 	newargv[newargc++] = "-fplugin-arg-" LIBMKPRIV "-run=1";
