@@ -1,6 +1,7 @@
 #include "common.h"
 #include "plugin-version.h"
 #include "symbols-pass.h"
+#include "jfunc-pass.h"
 
 int plugin_is_GPL_compatible;
 
@@ -77,6 +78,7 @@ plugin_finalize (void *, void *)
     }
 
   finalize_pass_symbols ();
+  finalize_pass_jfunc ();
 }
 
 void static
@@ -142,18 +144,27 @@ plugin_init (plugin_name_args *plugin_info, plugin_gcc_version *version)
 
   parse_arguments (plugin_info->argc, plugin_info->argv);
 
-  struct register_pass_info pass_info;
-  pass_info.pass = make_pass_symbols (g);
-  pass_info.reference_pass_name = "simdclone";
-  pass_info.ref_pass_instance_number = 1;
-  pass_info.pos_op = PASS_POS_INSERT_BEFORE;
+  struct register_pass_info pass_info_jfunc;
+  pass_info_jfunc.pass = make_pass_jfunc (g);
+  pass_info_jfunc.reference_pass_name = "simdclone";
+  pass_info_jfunc.ref_pass_instance_number = 1;
+  pass_info_jfunc.pos_op = PASS_POS_INSERT_BEFORE;
+
+  struct register_pass_info pass_info_symbols;
+  pass_info_symbols.pass = make_pass_symbols (g);
+  pass_info_symbols.reference_pass_name = "simdclone";
+  pass_info_symbols.ref_pass_instance_number = 1;
+  pass_info_symbols.pos_op = PASS_POS_INSERT_BEFORE;
 
   register_callback (plugin_info->base_name,
 		     PLUGIN_ALL_IPA_PASSES_START, compute_md5,
 		     NULL);
   register_callback (plugin_info->base_name,
 		     PLUGIN_PASS_MANAGER_SETUP, NULL,
-		     &pass_info);
+		     &pass_info_jfunc);
+  register_callback (plugin_info->base_name,
+		     PLUGIN_PASS_MANAGER_SETUP, NULL,
+		     &pass_info_symbols);
   register_callback (plugin_info->base_name,
 		     PLUGIN_FINISH, plugin_finalize,
 		     NULL);

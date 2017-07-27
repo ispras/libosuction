@@ -45,7 +45,9 @@ $(LD_PLUG_LIBS): ld-plug/lib%.so: ld-plug/%.o
 	$(CC) $(CPPFLAGS) $(CFLAGS) -shared -o $@ $^ -Wl,--version-script,ld-plug/vers
 
 gcc-plug/hide/libmkpriv.so: gcc-plug/hide/plug.o
-gcc-plug/dlsym/libplug.so: gcc-plug/dlsym/plug.o gcc-plug/dlsym/symbols-pass.o
+gcc-plug/dlsym/libplug.so: $(addprefix gcc-plug/dlsym/, plug.o \
+							symbols-pass.o \
+							jfunc-pass.o)
 $(GCC_PLUG_LIBS):
 	$(CXX) $(CPPFLAGS) -shared -o $@ $^
 

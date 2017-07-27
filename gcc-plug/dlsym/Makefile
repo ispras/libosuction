@@ -8,5 +8,5 @@ test: $(PLUGIN)
 	CC=$(CC) CXX=$(CXX) PLUGIN="../$(PLUGIN)" ./run_tests.sh || exit 1;
 
 clean:
-	-rm -f $(PLUGIN) plug.o symbols-pass.o a.out
+	-rm -f $(PLUGIN) *.o a.out
 	-rm -f tests/*.out tests/*.so
