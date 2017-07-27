@@ -37,6 +37,10 @@ function simple_test_cpp() {
   rm $file.* *.out
 }
 
+echo "------------------"
+echo "symbols-pass tests"
+echo "------------------"
+
 # TODO handle constant index
 # echo $(simple_test array.c       "dlsym matched to the signature" 1 "Signature"  )
 # echo $(simple_test array.c       "dlsym set state:DYNAMIC"	   1 "DYNAMIC")
