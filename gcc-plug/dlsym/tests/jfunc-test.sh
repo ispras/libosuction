@@ -68,7 +68,7 @@ TFILE="overridden.cpp"
 compile_test
 dump_check_test "jf1" "_ZN12interseption22GetRealFunctionAddressEPKcd,0->_ZN12interseption22GetRealFunctionAddressEPKcS1_,0" 1
 dump_check_test "jf2" "_ZN12interseption22GetRealFunctionAddressEPKcS1_,0->_ZN12interseption22GetRealFunctionAddressEPKc,0" 1
-dump_check_test "jf3" "_ZN12interseption22GetRealFunctionAddressEPKc,1->dlsym,0" 1
+dump_check_test "jf3" "_ZN12interseption22GetRealFunctionAddressEPKc,0->dlsym,1" 1
 cleanup_test
 
 exit 0

@@ -31,9 +31,9 @@ compute_jf_for_edge (struct cgraph_edge *cs)
 
 	  jf = XNEW (struct jfunction);
 	  jf->from_name = assemble_name_raw (cs->caller);
-	  jf->from_arg = n;
+	  jf->from_arg = k;
 	  jf->to_name = assemble_name_raw (cs->callee);
-	  jf->to_arg = k;
+	  jf->to_arg = n;
 
 	  jfuncs.safe_push (jf);
 
