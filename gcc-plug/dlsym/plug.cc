@@ -6,13 +6,12 @@
 int plugin_is_GPL_compatible;
 
 char md5str[33];
-const char *output_fd = NULL;
+const char *sym_out_fd = NULL;
+const char *jf_out_fd = NULL;
 
 extern vec<struct signature> signatures;
 extern vec<struct resolve_ctx *> resolve_contexts;
-
-void
-write_dynamic_symbol_calls (FILE *outf, vec<struct resolve_ctx *> *ctxs);
+extern vec<struct jfunction *> jfuncs;
 
 void
 printmd5 (char *p, const unsigned char md5[])
@@ -64,15 +63,69 @@ compute_md5 (void *, void *)
 }
 
 void
+write_dynamic_symbol_calls (FILE *output, vec<struct resolve_ctx *> *ctxs)
+{
+  unsigned i, j;
+  const char *symbol;
+  struct resolve_ctx *ctx;
+
+  for (i = 0; ctxs->iterate (i, &ctx); ++i)
+    {
+      gcc_assert (ctx->node);
+      gcc_assert (ctx->node->decl);
+      /* Output the header in the following format:
+	 "<file>:<line>:<srcid>:<section>:<caller>:<status>:" */
+      fprintf (output, "%s:%d:%s:", LOCATION_FILE (ctx->loc),
+	       LOCATION_LINE (ctx->loc), md5str);
+      dump_decl_section (output, ctx->node->decl);
+      fprintf (output, ":%s:", assemble_name_raw (ctx->node));
+      dump_lattice_value (output, ctx->status);
+      fprintf (output, ":");
+
+      /* Output symbols separated by comma */
+      for (j = 0; ctx->symbols->iterate (j, &symbol); ++j)
+	{
+	  if (j)
+	    fprintf (output, ",");
+	  fprintf (output, "%s", symbol);
+	}
+      fprintf(output, "\n");
+    }
+}
+
+void
+write_jfunctions (FILE *output, vec<struct jfunction *> *jfs)
+{
+  unsigned i;
+  struct jfunction *jf;
+
+  for (i = 0; jfs->iterate (i, &jf); ++i)
+    fprintf (output, "%s %d %s %d\n",
+	     jf->from_name, jf->from_arg,
+	     jf->to_name, jf->to_arg);
+}
+
+void
 plugin_finalize (void *, void *)
 {
-  if (output_fd)
+  if (sym_out_fd)
     {
-      FILE *output = fdopen (atoi (output_fd), "w");
+      FILE *output = fdopen (atoi (sym_out_fd), "w");
       if (!output)
 	fatal_error (xstrerror (errno));
 
       write_dynamic_symbol_calls (output, &resolve_contexts);
+
+      fclose (output);
+    }
+
+  if (jf_out_fd)
+    {
+      FILE *output = fdopen (atoi (jf_out_fd), "a");
+      if (!output)
+	fatal_error (xstrerror (errno));
+
+      write_jfunctions (output, &jfuncs);
 
       fclose (output);
     }
@@ -89,7 +142,7 @@ parse_argument (plugin_argument *arg)
   /* Read dynamic caller signature. For instance:
      -fplugin-libplug-sign-dlsym=1
      means that name of caller is 'dlsym' and symbol is an argument no. 1. */
-  if (!strncmp (arg_key, "sign-", 5))
+  if (!strncmp (arg_key, "sign-", 5) && arg_key[5] != '\0')
     {
       struct signature initial = { xstrdup (&arg_key[5]), atoi (arg_value) };
       signatures.safe_push (initial);
@@ -97,10 +150,18 @@ parse_argument (plugin_argument *arg)
     }
 
   /* Read a file descriptor to output symbols:
-     -fplugin-libplug-out=1 */
-  if (!strcmp(arg_key, "out"))
+     -fplugin-libplug-symout=1 */
+  if (!strcmp(arg_key, "symout"))
     {
-      output_fd = arg_value;
+      sym_out_fd = arg_value;
+      return;
+    }
+
+  /* Read a file descriptor to output jump functions:
+     -fplugin-libplug-jfout=2 */
+  if (!strcmp(arg_key, "jfout"))
+    {
+      jf_out_fd = arg_value;
       return;
     }
 
@@ -170,36 +231,4 @@ plugin_init (plugin_name_args *plugin_info, plugin_gcc_version *version)
 		     NULL);
   return 0;
 }
-
-void
-write_dynamic_symbol_calls (FILE *output, vec<struct resolve_ctx *> *ctxs)
-{
-  unsigned i, j;
-  const char *symbol;
-  struct resolve_ctx *ctx;
-
-  for (i = 0; ctxs->iterate (i, &ctx); ++i)
-    {
-      gcc_assert (ctx->node);
-      gcc_assert (ctx->node->decl);
-      /* Output the header in the following format:
-	 "<file>:<line>:<srcid>:<section>:<caller>:<status>:" */
-      fprintf (output, "%s:%d:%s:", LOCATION_FILE (ctx->loc),
-	       LOCATION_LINE (ctx->loc), md5str);
-      dump_decl_section (output, ctx->node->decl);
-      fprintf (output, ":%s:", assemble_name_raw (ctx->node));
-      dump_lattice_value (output, ctx->status);
-      fprintf (output, ":");
-
-      /* Output symbols separated by comma */
-      for (j = 0; ctx->symbols->iterate (j, &symbol); ++j)
-	{
-	  if (j)
-	    fprintf (output, ",");
-	  fprintf (output, "%s", symbol);
-	}
-      fprintf(output, "\n");
-    }
-}
-
 

@@ -46,7 +46,7 @@ int main(int argc, char *argv[])
 
 #if GCC_RUN == 1
 	char optstr[64];
-	snprintf(optstr, sizeof optstr, "-fplugin-arg-" LIBDLSYM "-out=%d", sockfd);
+	snprintf(optstr, sizeof optstr, "-fplugin-arg-" LIBDLSYM "-symout=%d", sockfd);
 	newargv[newargc++] = "-fplugin=" DLSYMPLUG;
 	newargv[newargc++] = "-fplugin-arg-" LIBDLSYM "-in=" DLSYMIN;
 	newargv[newargc++] = optstr;

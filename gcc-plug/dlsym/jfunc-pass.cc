@@ -1,11 +1,12 @@
 #include "common.h"
 #include "jfunc-pass.h"
 
-vec<struct jfunction> jfuncs;
+vec<struct jfunction *> jfuncs;
 
 static void
 compute_jf_for_edge (struct cgraph_edge *cs)
 {
+  struct jfunction *jf;
   gimple call = cs->call_stmt;
   unsigned n, k, arg_num = gimple_call_num_args (call);
 
@@ -28,17 +29,17 @@ compute_jf_for_edge (struct cgraph_edge *cs)
 	  if (!t)
 	    continue;
 
-	  struct jfunction jf;
-	  jf.from_name = assemble_name_raw (cs->caller);
-	  jf.from_arg = n;
-	  jf.to_name = assemble_name_raw (cs->callee);
-	  jf.to_arg = k;
+	  jf = XNEW (struct jfunction);
+	  jf->from_name = assemble_name_raw (cs->caller);
+	  jf->from_arg = n;
+	  jf->to_name = assemble_name_raw (cs->callee);
+	  jf->to_arg = k;
 
 	  jfuncs.safe_push (jf);
 
 	  if (dump_file)
 	    fprintf (dump_file, "%s,%d->%s,%d\n",
-		     jf.from_name, jf.from_arg, jf.to_name, jf.to_arg);
+		     jf->from_name, jf->from_arg, jf->to_name, jf->to_arg);
 	}
     }
 }
@@ -120,5 +121,7 @@ make_pass_jfunc (gcc::context *ctxt)
 void
 finalize_pass_jfunc ()
 {
+  while (!jfuncs.is_empty ())
+    free (jfuncs.pop ());
 }
 
