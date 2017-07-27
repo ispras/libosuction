@@ -1,13 +1,11 @@
 #include "common.h"
 #include "symbols-pass.h"
 
-vec<struct resolve_ctx *> resolve_contexts;
 vec<struct signature> signatures;
+vec<struct resolve_ctx *> resolve_contexts;
 
-static resolve_lattice_t
-parse_symbol (struct resolve_ctx *ctx, gimple stmt, tree symbol);
-static resolve_lattice_t
-parse_gimple_stmt (struct resolve_ctx *ctx, gimple stmt);
+static resolve_lattice_t parse_symbol (struct resolve_ctx *ctx, gimple stmt, tree symbol);
+static resolve_lattice_t parse_gimple_stmt (struct resolve_ctx *ctx, gimple stmt);
 
 static void
 init_resolve_ctx (struct resolve_ctx *ctx)
@@ -620,7 +618,7 @@ resolve_dlsym_calls (void)
     }
 
   if (dump_file)
-    fprintf (dump_file, "Dynamic symbol resolving pass ended\n\n");
+    fprintf (dump_file, "Symbols pass ended\n\n");
   return 0;
 }
 
@@ -628,10 +626,10 @@ resolve_dlsym_calls (void)
 
 namespace
 {
-  const pass_data pass_dlsym_data =
+  const pass_data pass_data_symbols =
     {
       SIMPLE_IPA_PASS,
-      "dlsym",			/* name */
+      "symbols",		/* name */
       OPTGROUP_NONE,		/* optinfo_flags */
 #if BUILDING_GCC_VERSION == 4009
       false,			/* has_gate */
@@ -645,11 +643,11 @@ namespace
       0				/* todo_flags_finish */
     };
 
-  class pass_dlsym : public simple_ipa_opt_pass
+  class pass_symbols : public simple_ipa_opt_pass
   {
 public:
-  pass_dlsym (gcc::context *ctxt)
-    : simple_ipa_opt_pass (pass_dlsym_data, ctxt)
+  pass_symbols (gcc::context *ctxt)
+    : simple_ipa_opt_pass (pass_data_symbols, ctxt)
     {
     }
 
@@ -663,13 +661,13 @@ public:
 } // anon namespace
 
 simple_ipa_opt_pass *
-make_pass_dlsym (gcc::context *ctxt)
+make_pass_symbols (gcc::context *ctxt)
 {
-  return new pass_dlsym (ctxt);
+  return new pass_symbols (ctxt);
 }
 
 void
-finalize_pass_dlsym ()
+finalize_pass_symbols ()
 {
   while (!resolve_contexts.is_empty ())
     free_resolve_ctx (resolve_contexts.pop ());

@@ -11,7 +11,7 @@ function simple_test() {
   local expected="$3"
   echo "TESTING $file ($4)"
   $CC -O2 -fplugin=$PLUGIN $PLUGIN_ARG $file -ldl -fdump-ipa-all
-  local actual=$(dump_contains $file.*i.dlsym "$str")
+  local actual=$(dump_contains $file.*i.symbols "$str")
   if [ $expected -eq $actual ]
   then
     echo "PASS"
@@ -27,7 +27,7 @@ function simple_test_cpp() {
   local expected="$3"
   echo "TESTING $file ($4)"
   $CXX -O2 -fplugin=$PLUGIN $PLUGIN_ARG $file -ldl -fdump-ipa-all
-  local actual=$(dump_contains $file.*i.dlsym "$str")
+  local actual=$(dump_contains $file.*i.symbols "$str")
   if [ $expected -eq $actual ]
   then
     echo "PASS"

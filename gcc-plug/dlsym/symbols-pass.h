@@ -49,9 +49,9 @@ struct resolve_ctx
 };
 
 simple_ipa_opt_pass *
-make_pass_dlsym (gcc::context *ctxt);
+make_pass_symbols (gcc::context *ctxt);
 void
-finalize_pass_dlsym ();
+finalize_pass_symbols ();
 
 void
 dump_dynamic_symbol_calls (struct resolve_ctx *ctx);

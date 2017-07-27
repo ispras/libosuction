@@ -76,7 +76,7 @@ plugin_finalize (void *, void *)
       fclose (output);
     }
 
-  finalize_pass_dlsym ();
+  finalize_pass_symbols ();
 }
 
 void static
@@ -143,7 +143,7 @@ plugin_init (plugin_name_args *plugin_info, plugin_gcc_version *version)
   parse_arguments (plugin_info->argc, plugin_info->argv);
 
   struct register_pass_info pass_info;
-  pass_info.pass = make_pass_dlsym (g);
+  pass_info.pass = make_pass_symbols (g);
   pass_info.reference_pass_name = "simdclone";
   pass_info.ref_pass_instance_number = 1;
   pass_info.pos_op = PASS_POS_INSERT_BEFORE;
