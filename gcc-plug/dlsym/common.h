@@ -11,7 +11,6 @@
 #else
 #include "plugin.h"
 #endif
-#include "plugin-version.h"
 #include "tree.h"
 #include "basic-block.h"
 #include "cgraph.h"
@@ -65,5 +64,12 @@ typedef const gimple *const_gimple_ptr;
 #define ipa_ref_list_referring_iterate(L, I, P)	\
 	(L)->referring.iterate((I), &(P))
 #endif
+
+static inline const char *
+assemble_name_raw (struct cgraph_node *node)
+{
+  const char *name = IDENTIFIER_POINTER (DECL_ASSEMBLER_NAME (node->decl));
+  return name + (name[0] == '*');
+}
 
 #endif
