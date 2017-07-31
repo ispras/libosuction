@@ -30,7 +30,7 @@ function dump_check_test() {
 }
 
 function cleanup_test() {
-  rm $TFILE.* *.out
+  rm $TFILE.* *.o
 }
 
 # symbols-pass.c
@@ -39,7 +39,7 @@ echo "------------------"
 echo "symbols-pass tests"
 echo "------------------"
 
-TFLAGS="-O2 -fplugin=$PLUGIN $PLUGIN_ARG -fdump-ipa-all -ldl"
+TFLAGS="-c -O2 -fplugin=$PLUGIN $PLUGIN_ARG -fdump-ipa-all -ldl"
 
 ## C tests
 TCOMPILER=$CC
@@ -241,6 +241,16 @@ dump_check_test "sign" "dlsym matched to the signature" 2
 dump_check_test "const" "dlsym set state:CONSTANT" 2
 dump_check_test "symbol" "main->dlsym->\[foo\]" 1
 dump_check_test "symbol" "main->dlsym->\[bar\]" 1
+cleanup_test
+
+### mux_wrapper.c
+TFILE="mux_wrapper.c"
+
+compile_test
+dump_check_test "sign" "mux_dlsym matched to the signature" 2
+dump_check_test "const" "mux_dlsym set state:CONSTANT" 2
+dump_check_test "symbol" "main->mux_dlsym->\[foo\]" 1
+dump_check_test "symbol" "main->mux_dlsym->\[bar\]" 1
 cleanup_test
 
 ### static_proxy.c

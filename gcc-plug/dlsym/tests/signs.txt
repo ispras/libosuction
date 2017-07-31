@@ -1,1 +1,3 @@
 dlvsym 1
+mux_dlsym 0
+mux_dlsym 1
