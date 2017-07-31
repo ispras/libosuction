@@ -1,5 +1,5 @@
 #!/bin/bash
-PLUGIN_ARG="-fplugin-arg-libplug-sign-dlsym=1 -fplugin-arg-libplug-in=signs.txt"
+PLUGIN_ARG="-fplugin-arg-libplug-sign-dlsym=1 -fplugin-arg-libplug-in=signs.txt -fplugin-arg-libplug-run=0"
 
 function compile_test() {
   echo "COMPILING $TFILE"
