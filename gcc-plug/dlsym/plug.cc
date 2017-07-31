@@ -8,6 +8,7 @@ int plugin_is_GPL_compatible;
 char md5str[33];
 const char *sym_out_fd = NULL;
 const char *jf_out_fd = NULL;
+int run = 1;
 
 extern vec<struct signature> signatures;
 extern vec<struct resolve_ctx *> resolve_contexts;
@@ -108,30 +109,35 @@ write_jfunctions (FILE *output, vec<struct jfunction *> *jfs)
 void
 plugin_finalize (void *, void *)
 {
-  if (sym_out_fd)
+  if (run == 0)
     {
-      FILE *output = fdopen (atoi (sym_out_fd), "w");
-      if (!output)
-	fatal_error (xstrerror (errno));
+      if (jf_out_fd)
+	{
+	  FILE *output = fdopen (atoi (jf_out_fd), "a");
+	  if (!output)
+	    fatal_error (xstrerror (errno));
 
-      write_dynamic_symbol_calls (output, &resolve_contexts);
+	  write_jfunctions (output, &jfuncs);
 
-      fclose (output);
+	  fclose (output);
+	}
+      finalize_pass_jfunc ();
     }
 
-  if (jf_out_fd)
+  if (run == 1)
     {
-      FILE *output = fdopen (atoi (jf_out_fd), "a");
-      if (!output)
-	fatal_error (xstrerror (errno));
+      if (sym_out_fd)
+	{
+	  FILE *output = fdopen (atoi (sym_out_fd), "w");
+	  if (!output)
+	    fatal_error (xstrerror (errno));
 
-      write_jfunctions (output, &jfuncs);
+	  write_dynamic_symbol_calls (output, &resolve_contexts);
 
-      fclose (output);
+	  fclose (output);
+	}
+      finalize_pass_symbols ();
     }
-
-  finalize_pass_symbols ();
-  finalize_pass_jfunc ();
 }
 
 void static
@@ -187,6 +193,19 @@ parse_argument (plugin_argument *arg)
       fclose (input);
       return;
     }
+
+  /* Read the mode of plugin:
+     -fplugin-libplug-run={0,1}
+     0 -- perform jump functions pass
+     1 -- perform symbols pass */
+  if (!strcmp (arg_key, "run"))
+    {
+      if ((arg_value[0] == '0' || arg_value[0] == '1')
+	  && arg_value[1] == '\0')
+	run = arg_value[0] - '0';
+      else
+	fatal_error ("run parameter accepts only 0 or 1");
+    }
 }
 
 void static
@@ -205,27 +224,36 @@ plugin_init (plugin_name_args *plugin_info, plugin_gcc_version *version)
 
   parse_arguments (plugin_info->argc, plugin_info->argv);
 
-  struct register_pass_info pass_info_jfunc;
-  pass_info_jfunc.pass = make_pass_jfunc (g);
-  pass_info_jfunc.reference_pass_name = "simdclone";
-  pass_info_jfunc.ref_pass_instance_number = 1;
-  pass_info_jfunc.pos_op = PASS_POS_INSERT_BEFORE;
-
-  struct register_pass_info pass_info_symbols;
-  pass_info_symbols.pass = make_pass_symbols (g);
-  pass_info_symbols.reference_pass_name = "simdclone";
-  pass_info_symbols.ref_pass_instance_number = 1;
-  pass_info_symbols.pos_op = PASS_POS_INSERT_BEFORE;
-
   register_callback (plugin_info->base_name,
 		     PLUGIN_ALL_IPA_PASSES_START, compute_md5,
 		     NULL);
-  register_callback (plugin_info->base_name,
-		     PLUGIN_PASS_MANAGER_SETUP, NULL,
-		     &pass_info_jfunc);
-  register_callback (plugin_info->base_name,
-		     PLUGIN_PASS_MANAGER_SETUP, NULL,
-		     &pass_info_symbols);
+
+  if (run == 0)
+    {
+      struct register_pass_info pass_info_jfunc;
+      pass_info_jfunc.pass = make_pass_jfunc (g);
+      pass_info_jfunc.reference_pass_name = "simdclone";
+      pass_info_jfunc.ref_pass_instance_number = 1;
+      pass_info_jfunc.pos_op = PASS_POS_INSERT_BEFORE;
+
+      register_callback (plugin_info->base_name,
+			 PLUGIN_PASS_MANAGER_SETUP, NULL,
+			 &pass_info_jfunc);
+    }
+
+  if (run == 1)
+    {
+      struct register_pass_info pass_info_symbols;
+      pass_info_symbols.pass = make_pass_symbols (g);
+      pass_info_symbols.reference_pass_name = "simdclone";
+      pass_info_symbols.ref_pass_instance_number = 1;
+      pass_info_symbols.pos_op = PASS_POS_INSERT_BEFORE;
+
+      register_callback (plugin_info->base_name,
+			 PLUGIN_PASS_MANAGER_SETUP, NULL,
+			 &pass_info_symbols);
+    }
+
   register_callback (plugin_info->base_name,
 		     PLUGIN_FINISH, plugin_finalize,
 		     NULL);

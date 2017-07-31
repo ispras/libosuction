@@ -15,14 +15,14 @@
 #define MERGED_PRIVDATA PLUGDIR "merged.vis"
 #define DLSYMIN         PLUGDIR SIGNDLSYM ".txt"
 
-#if (!(GCC_RUN == 1 || GCC_RUN == 2))
-#error "Compile gcc-wrapper with -DGCC_RUN={1,2}"
+#if (!(GCC_RUN >= 0 || GCC_RUN <= 2))
+#error "Compile gcc-wrapper with -DGCC_RUN={0,1,2}"
 #endif
 
 
 static const char *maybe_strip_lto(const char *opt)
 {
-#if GCC_RUN == 1
+#if GCC_RUN <= 1
 	if (!strcmp(opt, "-flto") || !strncmp(opt, "-flto=", strlen("-flto=")))
 		return "-fno-lto";
 #endif
@@ -31,7 +31,9 @@ static const char *maybe_strip_lto(const char *opt)
 
 int main(int argc, char *argv[])
 {
-#if GCC_RUN == 1
+#if GCC_RUN == 0
+	int sockfd = daemon_connect (argc, argv, "PreCompiler"[0]);
+#elif GCC_RUN == 1
 	int sockfd = daemon_connect (argc, argv, "Compiler"[0]);
 #endif
 
@@ -44,7 +46,13 @@ int main(int argc, char *argv[])
 	for (int i = 0; i < argc; i++)
 		newargv[newargc++] = maybe_strip_lto(argv[i]);
 
-#if GCC_RUN == 1
+#if GCC_RUN == 0
+	char optstr[64];
+	snprintf(optstr, sizeof optstr, "-fplugin-arg-" LIBDLSYM "-jfout=%d", sockfd);
+	newargv[newargc++] = "-fplugin=" DLSYMPLUG;
+	newargv[newargc++] = "-fplugin-arg-" LIBDLSYM "-run=0";
+	newargv[newargc++] = optstr;
+#elif GCC_RUN == 1
 	char optstr[64];
 	snprintf(optstr, sizeof optstr, "-fplugin-arg-" LIBDLSYM "-symout=%d", sockfd);
 	newargv[newargc++] = "-fplugin=" DLSYMPLUG;

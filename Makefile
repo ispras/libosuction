@@ -19,7 +19,7 @@ WRAP_COMMON = $(addprefix util/, wrapper-common.h wrapper-common.c)
 MERGE = util/merge
 DAEMON = util/daemon
 AUXILIARY = util/dlsym-signs.txt
-GCC_WRAP = $(addprefix util/, gcc-wrapper-1 gcc-wrapper-2)
+GCC_WRAP = $(addprefix util/, gcc-wrapper-0 gcc-wrapper-1 gcc-wrapper-2)
 LD_WRAP = $(addprefix util/, wrapper-1 wrapper-2)
 
 WRAPPERS = $(GCC_WRAP) $(LD_WRAP)

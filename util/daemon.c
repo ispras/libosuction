@@ -30,7 +30,7 @@ int main()
 		FILE *f;
 		if (!(f = fdopen(peerfd, "r"))
 		    || fscanf(f, "%c%d:", &tool, &cmdlen) != 2
-		    || tool != 'L' && tool != 'C'
+		    || tool != 'L' && tool != 'C' && tool != 'P'
 		    || !(cmdline = malloc(cmdlen))
 		    || fread(cmdline, cmdlen, 1, f) != 1)
 			fprintf(stderr, "%c read error\n", tool);
@@ -39,10 +39,22 @@ int main()
 		free(cmdline);
 		int fn = __sync_fetch_and_add(&fileno, 1);
 		char namebuf[32];
-		if (tool == 'L')
-			snprintf(namebuf, sizeof namebuf, "deps-%03d", fn);
-		else
-			snprintf(namebuf, sizeof namebuf, "dlsym-%03d", fn);
+		switch (tool)
+		  {
+		  case 'L':
+		    snprintf(namebuf, sizeof namebuf, "deps-%03d", fn);
+		    break;
+		  case 'P':
+		    snprintf(namebuf, sizeof namebuf, "jfunc-%03d", fn);
+		    break;
+		  case 'C':
+		    snprintf(namebuf, sizeof namebuf, "dlsym-%03d", fn);
+		    break;
+		  default:
+		    fprintf(stderr, "Unknown tool: %c\n", tool);
+		    snprintf(namebuf, sizeof namebuf, "unknown-%03d", fn);
+		    break;
+		  }
 		FILE *out = fopen(namebuf, "w");
 		char buf[4096];
 		size_t len;
