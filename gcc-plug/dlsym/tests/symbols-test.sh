@@ -44,6 +44,24 @@ TFLAGS="-c -O2 -fplugin=$PLUGIN $PLUGIN_ARG -fdump-ipa-all -ldl"
 ## C tests
 TCOMPILER=$CC
 
+### array.c
+TFILE="array.c"
+
+compile_test
+dump_check_test "sign" "dlsym matched to the signature" 1
+dump_check_test "const" "dlsym set state:CONSTANT" 1
+dump_check_test "symbol" "main->dlsym->\[bar\]" 1
+cleanup_test
+
+### array2d.c
+TFILE="array2d.c"
+
+compile_test
+dump_check_test "sign" "dlsym matched to the signature" 1
+dump_check_test "const" "dlsym set state:CONSTANT" 1
+dump_check_test "symbol" "main->dlsym->\[bar1\]" 1
+cleanup_test
+
 ### array_assign.c
 TFILE="array_assign.c"
 
@@ -369,9 +387,6 @@ echo "Passed:	$COUNTER_PASSED"
 echo "Total:	$COUNTER_TOTAL"
 echo "------------------"
 
-# TODO handle constant index
-# echo $(simple_test array.c       "dlsym matched to the signature" 1 "Signature"  )
-# echo $(simple_test array.c       "dlsym set state:DYNAMIC"	   1 "DYNAMIC")
 # TODO c_str_call.cpp
 # TODO strcat.c
 #echo $(simple_test wrapper_complex.c "dlsym matched to the signature" 1 "Signature"  )

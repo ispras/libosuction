@@ -307,19 +307,32 @@ parse_ref_1 (struct resolve_ctx *ctx, gimple stmt, tree ctor,
       switch (TREE_CODE (t))
 	{
 	case ARRAY_REF:
-	  FOR_EACH_CONSTRUCTOR_ELT (CONSTRUCTOR_ELTS (ctor), cnt, cfield, cval)
+	  field = TREE_OPERAND (t, 1);
+
+	  if (TREE_CODE (field) == INTEGER_CST)
 	    {
-	      resolve_lattice_t p_res = parse_symbol (ctx, stmt, cval);
-	      result = resolve_lattice_meet (result, p_res);
+	      FOR_EACH_CONSTRUCTOR_ELT (CONSTRUCTOR_ELTS (ctor), cnt, cfield, cval)
+		if (tree_int_cst_equal (cfield, field))
+		  return parse_symbol (ctx, stmt, cval);
+	    }
+	  else
+	    {
+	      FOR_EACH_CONSTRUCTOR_ELT (CONSTRUCTOR_ELTS (ctor), cnt, cfield, cval)
+		{
+		  resolve_lattice_t p_res = parse_symbol (ctx, stmt, cval);
+		  result = resolve_lattice_meet (result, p_res);
+		}
 	    }
 	  return result;
 	  break;
 
 	case COMPONENT_REF:
 	  field = TREE_OPERAND (t, 1);
+
 	  FOR_EACH_CONSTRUCTOR_ELT (CONSTRUCTOR_ELTS (ctor), cnt, cfield, cval)
 	    if (field == cfield)
 	      return parse_symbol (ctx, stmt, cval);
+
 	  gcc_unreachable ();
 	  break;
 
@@ -331,11 +344,22 @@ parse_ref_1 (struct resolve_ctx *ctx, gimple stmt, tree ctor,
   switch (TREE_CODE (t))
     {
     case ARRAY_REF:
-      FOR_EACH_CONSTRUCTOR_ELT (CONSTRUCTOR_ELTS (ctor), cnt, cfield, cval)
+      field = TREE_OPERAND (t, 1);
+
+      if (TREE_CODE (field) == INTEGER_CST)
 	{
-	  resolve_lattice_t p_res = parse_ref_1 (ctx, stmt, cval,
-						 stack, depth - 1);
-	  result = resolve_lattice_meet (result, p_res);
+	  FOR_EACH_CONSTRUCTOR_ELT (CONSTRUCTOR_ELTS (ctor), cnt, cfield, cval)
+	    if (tree_int_cst_equal (cfield, field))
+	      return parse_ref_1 (ctx, stmt, cval, stack, depth - 1);
+	}
+      else
+	{
+	  FOR_EACH_CONSTRUCTOR_ELT (CONSTRUCTOR_ELTS (ctor), cnt, cfield, cval)
+	    {
+	      resolve_lattice_t p_res = parse_ref_1 (ctx, stmt, cval,
+						     stack, depth - 1);
+	      result = resolve_lattice_meet (result, p_res);
+	    }
 	}
       break;
 
