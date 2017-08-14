@@ -22,15 +22,19 @@ Configuration:
   --release[=yes]         release build [no]
 
 Some influential environment variables:
-  CC                      C compiler command
+  CC                      C compiler command [detected: gcc/c99/cc]
   CFLAGS                  C compiler flags
   CPPFLAGS                C preprocessor flags [-I.]
-  CXX                     C++ compiler command
+  CXX                     C++ compiler command [detected: g++/c++]
   CXXFLAGS                C++ compiler flags
   LDFLAGS                 linker flags
 EOF
 exit 0
 }
+
+cmdexists () { type "$1" >/dev/null 2>&1 ; }
+trycc () { test -z "$CC" && cmdexists "$1" && CC=$1 ; }
+trycxx () { test -z "$CXX" && cmdexists "$1" && CXX=$1 ; }
 
 debug=no
 release=no
@@ -74,6 +78,19 @@ fi
 if test "$release" = yes; then
     CFLAGS="$CFLAGS -O2"
 fi
+
+printf "checking for a C compiler... "
+trycc gcc
+trycc c99
+trycc cc
+printf "%s\n" "$CC"
+test -n "$CC" || die "$0: cannot find a C compiler"
+
+printf "checking for a C++ compiler... "
+trycxx g++
+trycxx c++
+printf "%s\n" "$CXX"
+test -n "$CXX" || die "$0: cannot find a C++ compiler"
 
 mkdir -p "$plugdir" || die "$0: cannot create directory $plugdir"
 test -w "$plugdir" || die "$0: directory $plugdir is not writable"
