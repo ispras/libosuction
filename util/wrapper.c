@@ -8,6 +8,11 @@
 
 #define ALTDIR (PLUGDIR "ld/")
 #define PLUGIN (PLUGDIR "ld/libplug.so")
+#define PLUGIN_PRIV (PLUGDIR "ld/libplug-priv.so")
+
+#if (!(GCC_RUN == 1 || GCC_RUN == 2))
+#error "Compile ld wrapper with -DGCC_RUN={1,2}"
+#endif
 
 int main(int argc, char *argv[])
 {
@@ -21,13 +26,14 @@ int main(int argc, char *argv[])
 	die("bad wrapped command\n");
 ok:;
 
-	int sockfd = daemon_connect (argc, argv, "Linker"[0]);
-
 	char origcmd[7 + sizeof ALTDIR] = ALTDIR;
 	strcpy(origcmd + sizeof ALTDIR - 1, name);
 
 	char *newargv[argc + 5];
 	memcpy(newargv, argv, argc * sizeof *argv);
+#if GCC_RUN == 1
+	int sockfd = daemon_connect(argc, argv, "Linker"[0]);
+
 	char optstr[64], *entry = "";
 	for (int i = 1; i < argc - 1; i++)
 		if (!strcmp(argv[i], "-e")) {
@@ -39,6 +45,12 @@ ok:;
 	newargv[argc++] = PLUGIN;
 	newargv[argc++] = "--plugin-opt";
 	newargv[argc++] = optstr;
+#else
+	newargv[argc++] = "--plugin";
+	newargv[argc++] = PLUGIN_PRIV;
+	newargv[argc++] = "--plugin-opt";
+	newargv[argc++] = MERGED_PRIVDATA;
+#endif
 	newargv[argc++] = 0;
 	execv(origcmd, newargv);
 	die("execve: %s\n", strerror(errno));

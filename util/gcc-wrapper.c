@@ -11,7 +11,6 @@
 #define LIBDLSYM "libplug"
 #define DLSYMPLUG       PLUGDIR LIBDLSYM ".so"
 #define MKPRIVPLUG      PLUGDIR LIBMKPRIV ".so"
-#define MERGED_PRIVDATA PLUGDIR "merged.vis"
 
 #if (!(GCC_RUN == 1 || GCC_RUN == 2))
 #error "Compile gcc-wrapper with -DGCC_RUN={1,2}"
