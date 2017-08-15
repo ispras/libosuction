@@ -6,7 +6,7 @@
 
 #include "wrapper-common.h"
 
-#define ALTDIR (PLUGDIR "ld")
+#define ALTDIR (PLUGDIR "ld/")
 #define PLUGIN (PLUGDIR "ld/libplug.so")
 
 int main(int argc, char *argv[])
