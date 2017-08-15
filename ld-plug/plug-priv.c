@@ -199,13 +199,7 @@ process_elf(int fd, off_t offset, off_t filesize, const unsigned char *view,
 						 MAP_SHARED, clonefd, 0);
 			}
 			Sym *csym = (void *)addrshift(sym, cloneview, view);
-			if (0 && s->vis == V_LOCALIZE) {
-				//csym->st_info &= 0x0f;
-				csym->st_shndx = SHN_UNDEF;
-				//csym->st_shndx = SHN_ABS;
-			}
-			else
-				csym->st_other = STV_HIDDEN;
+			csym->st_other = STV_HIDDEN;
 		}
 		break;
 	}
