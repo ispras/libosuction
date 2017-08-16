@@ -252,6 +252,18 @@ error(const char *fmt, ...)
 }
 
 static enum ld_plugin_status
+compat_get_view(const struct ld_plugin_input_file *file, const void **viewp)
+{
+	if (get_view)
+		return get_view(file->handle, viewp);
+	void *view = malloc(file->filesize);
+	if (!view) return LDPS_ERR;
+	*viewp = view;
+	off_t sz = file->filesize;
+	return pread(file->fd, view, sz, file->offset) != sz ? LDPS_ERR : 0;
+}
+
+static enum ld_plugin_status
 claim_file_handler(const struct ld_plugin_input_file *file, int *claimed)
 {
 	int nplugsyms = 0;
@@ -259,7 +271,7 @@ claim_file_handler(const struct ld_plugin_input_file *file, int *claimed)
 	const char *filename = file->name;
 	const void *view;
 	enum ld_plugin_status status;
-	if ((status = get_view(file->handle, &view)))
+	if ((status = compat_get_view(file, &view)))
 		return error("%s: get_view: %d", filename, status);
 
 	const char *errmsg
@@ -271,6 +283,7 @@ claim_file_handler(const struct ld_plugin_input_file *file, int *claimed)
 		if ((status = add_symbols(file->handle, nplugsyms, plugsyms)))
 			return error("%s: add_symbols: %d", filename, status);
 	//free(plugsyms);
+	if (!get_view) free((void *)view);
 	return 0;
 }
 
