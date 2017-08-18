@@ -7,6 +7,7 @@
 
 #include <elf.h>
 
+#include "md5.h"
 #include "confdef.h"
 
 /* Some versions of the elf headers define it as signed int.  */
@@ -291,7 +292,7 @@ dg_object_start(const char *filename, off_t offset, int num_sections)
 	struct objfile *o = malloc(sizeof *o);
 	o->next = dg_info.obj_list;
 	o->name = strdup(filename);
-	o->srcid = "-";
+	o->srcid = 0;
 	o->offset = offset;
 	o->sections = calloc(num_sections, sizeof *o->sections);
 	o->num_sections = num_sections;
@@ -355,6 +356,17 @@ dg_record_srcid(const char *name)
 	dg_info.obj_list->srcid = name + strlen (PLUG_SECTION_PREFIX);
 	return 1;
 }
+static void
+dg_gen_srcid(const unsigned char *view, size_t len)
+{
+	if (dg_info.obj_list->srcid) return;
+	unsigned char md5[16];
+	md5_buffer(view, len, md5);
+	char *srcid = malloc(33);
+	srcid[32] = 0;
+	printmd5(srcid, md5);
+	dg_info.obj_list->srcid = srcid;
+}
 static void *
 memdup(const void *p, size_t l)
 {
@@ -376,7 +388,8 @@ sym_weak(int elfbind, int elfscn)
 	return elfbind == STB_WEAK ? W_WEAK : W_STRONG;
 }
 static const char *
-process_elf(const char *filename, off_t offset, const unsigned char *view)
+process_elf(const char *filename, off_t offset, off_t filesize,
+	    const unsigned char *view)
 {
 	const ElfNN_(Ehdr) *ehdr = (void *)view;
 	typedef ElfNN_(Shdr) Shdr;
@@ -444,6 +457,7 @@ process_elf(const char *filename, off_t offset, const unsigned char *view)
 		default: return "unhandled section type";
 		}
 	}
+	dg_gen_srcid(view, filesize);
 	struct sym *syms = dg_syms_alloc(symsz / sizeof(Sym));
 	for (int i = symtabidx; i; i = dg_section(i)->next) {
 		Shdr *shdr = shdrs + i;
@@ -553,7 +567,8 @@ claim_file_handler(const struct ld_plugin_input_file *file, int *claimed)
 	if ((status = compat_get_view(file, &view)))
 		return error("%s: get_view: %d", filename, status);
 
-	const char *errmsg = process_elf(filename, file->offset, view);
+	const char *errmsg = process_elf(filename, file->offset, file->filesize,
+					 view);
 	if (errmsg)
 		return error("%s: %s", filename, errmsg);
 	if (!get_view) free((void *)view);
