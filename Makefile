@@ -32,10 +32,11 @@ install: all
 	cp $(GCC_PLUG_LIBS) $(AUXILIARY) $(plugdir)
 	mkdir -p $(plugdir)/ld && cp $(LD_PLUG_LIBS) $(plugdir)/ld
 export
-check: all
+check: all install
 	$(MAKE) -C gcc-plug/hide check
 	$(MAKE) -C gcc-plug/dlsym test
 	$(MAKE) -C ld-plug test
+	test/run-all-passes.sh test/build.sh && test/check.sh
 clean:
 	find . -name '*.o' -o -name '*.so' | xargs -I % rm %
 distclean: clean
@@ -59,5 +60,4 @@ $(WRAPPERS):
 	$(CC) $(CPPFLAGS) $(CFLAGS) -DGCC_RUN=$* $(filter %.c, $^) -o $@
 
 # TODO:
-#  - make check using everything
 #  - deal with warnings (from new g++)

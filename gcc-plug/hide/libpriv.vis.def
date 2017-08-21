@@ -1,5 +1,0 @@
-2 2
-libpriv1.o:libpriv1:staticfoo
-libpriv1.o:libpriv1:staticvar
-libpriv1.o:libpriv1:libprivate
-libpriv1.o:libpriv1:libprivatevar
