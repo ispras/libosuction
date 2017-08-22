@@ -29,7 +29,7 @@ ok:;
 	char origcmd[7 + sizeof ALTDIR] = ALTDIR;
 	strcpy(origcmd + sizeof ALTDIR - 1, name);
 
-	char *newargv[argc + 5];
+	char *newargv[argc + 6];
 	memcpy(newargv, argv, argc * sizeof *argv);
 #if GCC_RUN == 1
 	int sockfd = daemon_connect(argc, argv, "Linker"[0]);
@@ -46,6 +46,7 @@ ok:;
 	newargv[argc++] = "--plugin-opt";
 	newargv[argc++] = optstr;
 #else
+	newargv[argc++] = "--gc-sections";
 	newargv[argc++] = "--plugin";
 	newargv[argc++] = PLUGIN_PRIV;
 	newargv[argc++] = "--plugin-opt";

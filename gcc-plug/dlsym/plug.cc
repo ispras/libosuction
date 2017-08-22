@@ -53,6 +53,10 @@ compute_md5 (void *, void *)
       case OPT_o:;
       case OPT_fplugin_:;
       case OPT_fplugin_arg_:;
+      case OPT_flto_:;
+      case OPT_flto:;
+      case OPT_ffunction_sections:;
+      case OPT_fdata_sections:;
       }
   fclose (f);
 

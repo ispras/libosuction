@@ -41,7 +41,7 @@ int main(int argc, char *argv[])
 	strcpy(origcmd, argv[0]);
 	strcat(origcmd, ORIG_CMD_SUFFIX);
 
-	const char *newargv[argc + 5 + 1];
+	const char *newargv[argc + 7 + 1];
 	int newargc = 0;
 	for (int i = 0; i < argc; i++)
 		newargv[newargc++] = maybe_strip_lto(argv[i]);
@@ -64,6 +64,10 @@ int main(int argc, char *argv[])
 	newargv[newargc++] = "-fplugin=" MKPRIVPLUG;
 	newargv[newargc++] = "-fplugin-arg-" LIBMKPRIV "-run=2";
 	newargv[newargc++] = "-fplugin-arg-" LIBMKPRIV "-fname=" MERGED_PRIVDATA;
+#endif
+#if GCC_RUN < 2 || SECTIONS
+	newargv[newargc++] = "-ffunction-sections";
+	newargv[newargc++] = "-fdata-sections";
 #endif
 	newargv[newargc++] = 0;
 	execv(origcmd, (char **)newargv);

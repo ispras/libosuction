@@ -302,6 +302,8 @@ compmd5 (void *, void *dump_p)
       case OPT_fplugin_arg_:;
       case OPT_flto_:;
       case OPT_flto:;
+      case OPT_ffunction_sections:;
+      case OPT_fdata_sections:;
       }
   fclose (f);
 
