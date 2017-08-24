@@ -58,7 +58,7 @@ build()
   CC=$gcc CXX=$gxx \
   PATH="$lddir:$PATH" \
   LD_LIBRARY_PATH="$stdcxx_path:$LD_LIBRARY_PATH" \
-    "$bldcmd" || die "Build pass $pass failed."
+    $bldcmd || die "Build pass $pass failed."
   cd - > /dev/null
 }
 
@@ -76,7 +76,7 @@ esac
 bldcmd="$1"
 test -n "$bldcmd" ||
   die "Please pass a valid build command. Run $0 -h for help."
-file "$bldcmd" && test -x "$bldcmd" && bldcmd=$(realpath $bldcmd)
+file "$bldcmd" &>/dev/null && test -x "$bldcmd" && bldcmd=$(realpath $bldcmd)
 
 case "$2" in
   -ld|--ld) real_ld=$3 ;;
