@@ -18,6 +18,7 @@ static int sockfd;
 static struct {
 	const char *output_name;
 	const char *entrypoint;
+	const char *linkid;
 	int is_dso;
 	int nobj;
 	int next_scn_uid;
@@ -133,12 +134,14 @@ sym_htab_lookup_only(const char *name)
 }
 
 static void
-dg_begin(const char *filename, int is_dso, int sockfd_, const char *entry)
+dg_begin(const char *filename, int is_dso,
+	 const char *linkid, const char *entry, int fd)
 {
 	dg_info.output_name = strdup(filename);
-	dg_info.entrypoint = *entry ? strdup(entry) : "_start";
+	dg_info.linkid = linkid;
+	dg_info.entrypoint = entry;
 	dg_info.is_dso = is_dso;
-	sockfd = sockfd_;
+	sockfd = fd;
 }
 static void
 dg_print_obj(FILE *f, const struct objfile *o, int subgraph)
@@ -195,8 +198,8 @@ static void
 dg_print(FILE *f)
 {
 	int nobj = dg_info.nobj, nscn = dg_info.next_scn_uid;
-	fprintf(f, "%c %d %d %s %s\n", "REDP"[dg_info.is_dso], nobj, nscn,
-		dg_info.output_name, dg_info.entrypoint);
+	fprintf(f, "%c %d %d %s %s %s\n", "REDP"[dg_info.is_dso], nobj, nscn,
+		dg_info.output_name, dg_info.entrypoint, dg_info.linkid);
 	int *scndeps = calloc(nscn, sizeof *scndeps);
 	for (struct objfile *o = dg_info.obj_list; o; o = o->next) {
 		fprintf(f, "%d\t%lld\t%s\t%s\n",
@@ -570,13 +573,15 @@ onload(struct ld_plugin_tv *tv)
 	u[LDPT_REGISTER_ALL_SYMBOLS_READ_HOOK].tv_register_all_symbols_read
 	    (all_symbols_read_handler);
 
-	const char *optstr = u[LDPT_OPTION].tv_string, *entry;
-	if (!optstr || !(entry = strchr(optstr, ':')))
+	const char *optstr = u[LDPT_OPTION].tv_string, *entry, *linkid;
+	if (!optstr)
 		return error("plugin options missing");
-	int sockfd = atoi(optstr);
+	int fd;
+	if (sscanf(optstr, "%m[0-9a-f]:%m[^:]:%d", &linkid, &entry, &fd) != 3)
+		return error("bad plugin option format");
 
 	int output = u[LDPT_LINKER_OUTPUT].tv_val;
-	dg_begin(u[LDPT_OUTPUT_NAME].tv_string, output, sockfd, entry+1);
+	dg_begin(u[LDPT_OUTPUT_NAME].tv_string, output, linkid, entry, fd);
 	return 0;
 }
 _Static_assert(sizeof((ld_plugin_onload){onload}) != 0, "");

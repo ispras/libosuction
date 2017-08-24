@@ -19,6 +19,7 @@ struct node {
 struct dso {
 	const char *name;
 	const char *entrypoint;
+	const char *linkid;
 	int is_dso;
 	int nobj;
 	int nscn;
@@ -169,8 +170,8 @@ static void
 input(struct dso *dso, FILE *f)
 {
 	char is_dso;
-	fscanf(f, " %c %d %d %ms %ms", &is_dso, &dso->nobj, &dso->nscn,
-	       &dso->name, &dso->entrypoint);
+	fscanf(f, " %c %d %d %ms %ms %ms", &is_dso, &dso->nobj, &dso->nscn,
+	       &dso->name, &dso->entrypoint, &dso->linkid);
 	dso->is_dso = is_dso == 'D';
 	struct obj *o = dso->obj = calloc(dso->nobj, sizeof *dso->obj);
 	struct scn *s = dso->scn = calloc(dso->nscn, sizeof *dso->scn);
