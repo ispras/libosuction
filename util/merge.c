@@ -422,7 +422,8 @@ static void mark(struct dso *dsos, int n)
 	}
 	int nloc = 0, nhid = 0;
 	struct sym *locstack = 0, *hidstack = 0;
-	for (struct dso *dso = dsos; dso < dsos + n; dso++)
+	for (struct dso *dso = dsos; dso < dsos + n; dso++) {
+		int nloc0 = nloc, nhid0 = nhid;
 		for (struct sym *y = dso->sym; y < dso->sym + dso->nsym; y++) {
 			if (y->weak == 'U') continue;
 			if (y->weak == 'C') continue;
@@ -437,12 +438,24 @@ static void mark(struct dso *dsos, int n)
 				}
 			}
 		}
+		printf("%d %d %s\n", nloc - nloc0, nhid - nhid0, dso->linkid);
+		for (struct sym *y = locstack; nloc0 < nloc; nloc0++,
+		     y = (void*)y->n.stacknext)
+			printsym(y);
+		puts("");
+		for (struct sym *y = hidstack; nhid0 < nhid; nhid0++,
+		     y = (void*)y->n.stacknext)
+			printsym(y);
+		puts("");
+	}
+#if 0
 	printf("%d %d\n", nloc, nhid);
 	for (; nloc; nloc--, locstack = (void *)locstack->n.stacknext)
 		printsym(locstack);
 	puts("");
 	for (; nhid; nhid--, hidstack = (void *)hidstack->n.stacknext)
 		printsym(hidstack);
+#endif
 }
 
 int main(int argc, char *argv[])

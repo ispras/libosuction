@@ -11,6 +11,7 @@
 #include <elf.h>
 
 #include "elf-common.h"
+#include "md5.h"
 
 #define HAVE_STDINT_H
 #include <plugin-api.h>
@@ -23,7 +24,7 @@ struct obj {
 
 struct sym {
 	const char *name;
-	enum {V_LOCALIZE, V_HIDE} vis;
+	unsigned srcid[4];
 };
 
 static struct symsht {
@@ -32,19 +33,28 @@ static struct symsht {
 	size_t size;
 } syms_htab;
 
+static void
+sym_htab_alloc(size_t sz)
+{
+	while (sz & (sz-1)) sz &= sz-1;
+	sz *= 4;
+	syms_htab.hashes = calloc(sz, sizeof *syms_htab.hashes);
+	syms_htab.syms = calloc(sz, sizeof *syms_htab.syms);
+	syms_htab.size = sz;
+}
 static inline unsigned
-sym_hash(const char *name)
+sym_hash(const char *name, unsigned *id)
 {
 	const unsigned char *c = (const void *)name;
-	unsigned h = 5381;
+	unsigned h = id[0] ^ id[1] ^ id[2] ^ id[3];
 	for (; *c; c++)
 		h += h*32 + *c;
 	return h;
 }
 static struct sym **
-sym_htab_lookup(const char *name)
+sym_htab_lookup(const char *name, unsigned *id)
 {
-	unsigned hash = sym_hash(name);
+	unsigned hash = sym_hash(name, id);
 	for (size_t i = hash; ; i++) {
 		i &= syms_htab.size - 1;
 		if (!syms_htab.syms[i]) {
@@ -52,48 +62,63 @@ sym_htab_lookup(const char *name)
 			return syms_htab.syms + i;
 		}
 		if (syms_htab.hashes[i] == hash
+		    && !memcmp(id, syms_htab.syms[i]->srcid, 4 * sizeof *id)
 		    && !strcmp(name, syms_htab.syms[i]->name))
 			return syms_htab.syms + i;
 	}
 }
 static struct sym *
-sym_htab_lookup_only(const char *name)
+sym_htab_lookup_only(const char *name, unsigned *id)
 {
-	unsigned hash = sym_hash(name);
+	unsigned hash = sym_hash(name, id);
 	for (size_t i = hash; ; i++) {
 		i &= syms_htab.size - 1;
 		if (!syms_htab.syms[i])
 			return 0;
 		if (syms_htab.hashes[i] == hash
+		    && !memcmp(id, syms_htab.syms[i]->srcid, 4 * sizeof *id)
 		    && !strcmp(name, syms_htab.syms[i]->name))
 			return syms_htab.syms[i];
 	}
 }
 static const char *
-read_syms(const char *file)
+read_syms(const char *linkid, const char *file)
 {
 	FILE *f = fopen(file, "r");
 	if (!f)
 		return "error opening file";
-	int nlocsyms, nhidsyms, sz;
-	fscanf(f, "%d %d", &nlocsyms, &nhidsyms);
-	for (sz = nlocsyms + nhidsyms; sz & (sz-1); sz &= sz-1);
-	sz += 3 * sz;
-	syms_htab.hashes = calloc(sz, sizeof *syms_htab.hashes);
-	syms_htab.syms = calloc(sz, sizeof *syms_htab.syms);
-	syms_htab.size = sz;
-	for (int i = 0; i < nlocsyms + nhidsyms; i++) {
-		const char *sym;
-		fscanf(f, " %ms", &sym);
-		struct sym **symp = sym_htab_lookup(sym);
-		if (*symp)
-			return "duplicate symbol";
-		*symp = malloc(sizeof **symp);
-		symp[0]->name = sym;
-		symp[0]->vis = i < nlocsyms ? V_LOCALIZE : V_HIDE;
+	int nlocsyms, nhidsyms;
+	char id[33];
+	while (fscanf(f, "%d %d %32s", &nlocsyms, &nhidsyms, id) == 3) {
+		if (strcmp(id, linkid)) {
+			for (int i = 0; i < nlocsyms + nhidsyms; i++)
+				fscanf(f, " %*[^\n]");
+			continue;
+		}
+		sym_htab_alloc(nlocsyms + nhidsyms);
+		for (int i = 0; i < nlocsyms + nhidsyms; i++) {
+			struct sym s;
+			fscanf(f, " %*[^:]:%32[0-9a-f]:%*d:%ms", id, &s.name);
+			unsigned *t = s.srcid;
+			sscanf(id, "%8x%8x%8x%8x", t+0, t+1, t+2, t+3);
+			struct sym **symp = sym_htab_lookup(s.name, s.srcid);
+			if (*symp) return "duplicate symbol";
+			*symp = malloc(sizeof **symp);
+			**symp = s;
+		}
+		break;
 	}
 	fclose(f);
 	return 0;
+}
+static char *
+plug_gen_srcid(char srcid[], const unsigned char *view, size_t len)
+{
+	unsigned char md5[16];
+	md5_buffer(view, len, md5);
+	srcid[32] = 0;
+	printmd5(srcid, md5);
+	return srcid;
 }
 static int
 filedup(int fd, off_t offset, off_t filesize)
@@ -158,6 +183,18 @@ process_elf(int fd, off_t offset, off_t filesize, const unsigned char *view,
 	int shstrndx = ehdr->e_shstrndx;
 	if (shstrndx == SHN_XINDEX)
 		shstrndx = shdrs[0].sh_link;
+	const char *shstrtab = (void *)(view + shdrs[shstrndx].sh_offset);
+	const char *srcid = 0;
+	for (int i = 1; i < shnum; i++) {
+		Shdr *shdr = shdrs + i;
+		if (shdr->sh_type == SHT_NOTE
+		    && shdr->sh_flags == SHF_EXCLUDE
+		    && (srcid = plug_srcid(shstrtab + shdr->sh_name)))
+			break;
+	}
+	if (!srcid) srcid = plug_gen_srcid((char[33]){}, view, filesize);
+	unsigned id[4];
+	sscanf(srcid, "%8x%8x%8x%8x", id+0, id+1, id+2, id+3);
 	int clonefd = -1;
 	unsigned char *cloneview;
 	for (int i = 1; i < shnum; i++) {
@@ -176,7 +213,7 @@ process_elf(int fd, off_t offset, off_t filesize, const unsigned char *view,
 			int bind = ELF_ST_BIND(sym->st_info);
 			int vis = ELF_ST_VISIBILITY(sym->st_other);
 			char *name = strings + sym->st_name;
-			struct sym *s = sym_htab_lookup_only(name);
+			struct sym *s = sym_htab_lookup_only(name, id);
 			if (bind != STB_LOCAL /*&& !strchr(name, '@')*/) {
 				struct ld_plugin_symbol *plugsym = *plugsyms + nplugsyms[0]++;
 				plugsym->name = name;
@@ -300,10 +337,12 @@ onload(struct ld_plugin_tv *tv)
 	u[LDPT_REGISTER_ALL_SYMBOLS_READ_HOOK].tv_register_all_symbols_read
 	    (all_symbols_read_handler);
 	u[LDPT_REGISTER_CLEANUP_HOOK].tv_register_cleanup(cleanup_handler);
-	const char *symfile = u[LDPT_OPTION].tv_string;
-	if (!symfile)
+	const char *optstr = u[LDPT_OPTION].tv_string, *linkid, *symfile;
+	if (!optstr)
 		return error("no input file");
-	const char *errmsg = read_syms(symfile);
+	if (sscanf(optstr, "%m[0-9a-f]:%ms", &linkid, &symfile) != 2)
+		return error("bad plugin option format");
+	const char *errmsg = read_syms(linkid, symfile);
 	if (errmsg)
 		return error("%s: %s", symfile, errmsg);
 	return 0;
