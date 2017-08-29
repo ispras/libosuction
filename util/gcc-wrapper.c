@@ -12,7 +12,7 @@
 #define SIGNDLSYM "dlsym-signs"
 #define DLSYMPLUG       PLUGDIR LIBDLSYM ".so"
 #define MKPRIVPLUG      PLUGDIR LIBMKPRIV ".so"
-#define MERGED_PRIVDATA PLUGDIR "merged.vis"
+#define MERGED_GCC_DATA PLUGDIR "merged.vis.gcc"
 #define DLSYMIN         PLUGDIR SIGNDLSYM ".txt"
 
 #if (!(GCC_RUN >= 0 || GCC_RUN <= 2))
@@ -63,7 +63,7 @@ int main(int argc, char *argv[])
 #else
 	newargv[newargc++] = "-fplugin=" MKPRIVPLUG;
 	newargv[newargc++] = "-fplugin-arg-" LIBMKPRIV "-run=2";
-	newargv[newargc++] = "-fplugin-arg-" LIBMKPRIV "-fname=" MERGED_PRIVDATA;
+	newargv[newargc++] = "-fplugin-arg-" LIBMKPRIV "-fname=" MERGED_GCC_DATA;
 #endif
 #if GCC_RUN < 2 || SECTIONS
 	newargv[newargc++] = "-ffunction-sections";

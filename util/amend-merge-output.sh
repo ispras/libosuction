@@ -16,6 +16,11 @@ BEGIN {
   SUBSEP = ":"
 }
 
+/[0-9]+ [0-9]+ [0-9a-f]{32,32}/ {
+  state = 0
+  next
+}
+
 /^$/ {
   state = 1
   next

@@ -24,7 +24,6 @@ exit 0
 
 cleanup() {
   test -n "$dpid" && kill $dpid
-  test -n "$merged" && rm $merged
 
   if [ -z "$dont_rm_real" -a -n "$gcc_real" -a -e "$gcc_real" ]; then
     mv $gcc_real $gcc
@@ -131,10 +130,10 @@ if shallrun 0; then
 fi
 if shallrun 1; then
   buildpass 1
-  merged=$(mktemp)
+  merged=$plugdir/merged.vis
   $util/merge deps-* > $merged || die "Merge failed."
   amended=$($util/amend-merge-output.sh $merged)
-  mv $amended $plugdir/merged.vis
+  mv $amended $plugdir/merged.vis.gcc
 fi
 if shallrun 2; then
   buildpass 2
