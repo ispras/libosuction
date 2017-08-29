@@ -201,7 +201,7 @@ unsigned int
 pass_hide_globally_invisible::execute (_EXECUTE_ARGS)
 {
   symtab_node *node;
-  bool comdat_priv_failed_p;
+  bool priv_failed_p;
 
   static_nodes = splay_tree_new ((splay_tree_compare_fn) strcmp,
 				 (splay_tree_delete_key_fn) free,
@@ -213,7 +213,7 @@ pass_hide_globally_invisible::execute (_EXECUTE_ARGS)
 
   FOR_EACH_SYMBOL (node)
     {
-      comdat_priv_failed_p = false;
+      priv_failed_p = false;
 
       if (no_external_uses_p (node))
 	{
@@ -222,15 +222,27 @@ pass_hide_globally_invisible::execute (_EXECUTE_ARGS)
           if (!TREE_PUBLIC (node->decl))
             continue;
 
+	  /*  TODO: this is a temp fix.  The semantics we want resembles that of
+	      "inline".  Ideally the symbol should remain weak but the compiler
+	      should be able to eliminate it (we know that there are no
+	      references to this symbol from outside this TU but GCC does not
+	      allow weak non-public symbols).  */
+	  if (DECL_WEAK (node->decl))
+	    {
+	      priv_failed_p = true;
+	      goto hide;
+	    }
+
 	  /* If all members of a comdat are known to be static, make them local
 	     and dissolve this comdat group.  Otherwise the deal is off, only
 	     adjust the visibility of this node and keep the comdat.  */
           if (node->same_comdat_group)
-            comdat_priv_failed_p = !localize_comdat (node);
+            priv_failed_p = !localize_comdat (node);
 	  else
 	    make_decl_local (node);
 	}
-      if ((lib_private_p (node) || comdat_priv_failed_p)
+    hide:
+      if ((lib_private_p (node) || priv_failed_p)
 	  && !dont_hide_p (node))
 	{
 	  DECL_VISIBILITY (node->decl) = VISIBILITY_HIDDEN;
