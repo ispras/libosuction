@@ -3,6 +3,7 @@
 #include "bversion.h"
 #include "gcc-plugin.h"
 #include "opts.h"
+#include "output.h"
 #include "toplev.h"
 #include "tree.h"
 #include "tree-cfg.h"
@@ -276,18 +277,18 @@ printmd5 (char *p, const unsigned char md5[])
 }
 
 void
-emit_privplugid_section ()
+emit_privplugid_section (void *, void *)
 {
   char buf[] =
    "\t.pushsection\t" PLUG_SECTION_PREFIX
    "\0_23456789abcdef0123456789abcdef,\"e\",@note\n"
    "\t.popsection\n";
   strncpy (buf + strlen (buf), md5str, 32);
-  add_asm_node (build_string (sizeof buf - 1, buf));
+  fprintf (asm_out_file, "%s", buf);
 }
 
 void
-compmd5 (void *, void *dump_p)
+compmd5 (void *, void *)
 {
   char *streamptr;
   size_t streamsz;
@@ -324,9 +325,6 @@ compmd5 (void *, void *dump_p)
   free (streamptr);
 
   printmd5 (md5str, md5sum);
-
-  if (dump_p)
-    emit_privplugid_section ();
 }
 
 } // anon namespace
@@ -376,17 +374,11 @@ plugin_init (plugin_name_args *i, plugin_gcc_version *v)
   pass_info.ref_pass_instance_number = 1;
   pass_info.pos_op = PASS_POS_INSERT_BEFORE;
 
-  if (gcc_run == 1)
-    {
-      void *dump_hash = (void *) true;
-      register_callback (i->base_name, PLUGIN_ALL_IPA_PASSES_START, compmd5, dump_hash);
-    }
-  else
-    {
-      void *dump_hash = (void *) false;
-      register_callback (i->base_name, PLUGIN_ALL_IPA_PASSES_START, compmd5, dump_hash);
-      register_callback (i->base_name, PLUGIN_PASS_MANAGER_SETUP, NULL, &pass_info);
-    }
+  register_callback (i->base_name, PLUGIN_ALL_IPA_PASSES_START, compmd5, NULL);
+  register_callback (i->base_name, PLUGIN_FINISH_UNIT, emit_privplugid_section,
+                     NULL);
+  if (gcc_run == 2)
+    register_callback (i->base_name, PLUGIN_PASS_MANAGER_SETUP, NULL, &pass_info);
 
   return 0;
 }
