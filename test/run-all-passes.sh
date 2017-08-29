@@ -2,7 +2,7 @@
 
 usage () {
 cat <<EOF
-Usage: $0 <build-script> [-ld <path-to-ld>]
+Usage: $0 [-ld <path-to-ld>] [-passes <passes>] <build-script>
 
 This script takes an actual build script (or command) as its argument.  It runs
 the command three times in the course of carrying out the three build passes.
@@ -13,13 +13,16 @@ run that first.
 If -ld option is supplied path-to-ld will be used as a linker. Otherwise the ld
 from the plugdir ($plugdir/ld/ld) is used; if it cannot be found the system ld
 is used (it must be new enough to support linker plugins).
+
+If -passes option (-p for short) is supplied only the specified build passes
+are executed. E.g. use '-p 12' to skip the 0-th pass (the default is 012 i.e.
+all passes).
 EOF
 exit 0
 }
 
 
-cleanup()
-{
+cleanup() {
   test -n "$dpid" && kill $dpid
   test -n "$merged" && rm $merged
 
@@ -31,15 +34,13 @@ cleanup()
 
 trap "cleanup" EXIT
 
-die()
-{
+die() {
   [ -n "$1" ] && echo "$1" || echo "Fail after build pass $pass."
   echo "Exiting."
   exit 1
 }
 
-setwrappers()
-{
+setwrappers() {
   cp $util/gcc-wrapper-$pass $gcc
   cp $util/gcc-wrapper-$pass $gxx
 
@@ -50,8 +51,7 @@ setwrappers()
   fi
 }
 
-build()
-{
+build() {
   cd - > /dev/null
   stdcxx_path=$(dirname $($gxx -print-file-name=libstdc++.so))
 
@@ -62,25 +62,33 @@ build()
   cd - > /dev/null
 }
 
-buildpass()
-{
+buildpass() {
   pass=$1
   setwrappers
   build
 }
 
-case "$1" in
-  -h|-help|--help) usage ;;
-esac
+shallrun() {
+  echo "$passes" | grep "$1" >/dev/null
+  return $?
+}
 
-bldcmd="$1"
+passes="012"
+while test $# -gt 0
+do
+  case "$1" in
+    --help|-help|-h) usage ;;
+    --passes|-passes|-p) passes=$2 ; shift ;;
+    --ld|-ld) real_ld=$2 ; shift ;;
+    *) bldcmd="$1" ;;
+  esac
+  shift
+done
+
 test -n "$bldcmd" ||
   die "Please pass a valid build command. Run $0 -h for help."
 file "$bldcmd" &>/dev/null && test -x "$bldcmd" && bldcmd=$(realpath $bldcmd)
 
-case "$2" in
-  -ld|--ld) real_ld=$3 ;;
-esac
 test -z "$real_ld" && real_ld=$plugdir/ld/ld
 test -e "$real_ld" || real_ld=$(which ld)
 
@@ -115,14 +123,19 @@ cd $tmpdir
 } || die "Cannot start the daemon."
 dpid=$!
 
-buildpass 0
-cat jfunc-* > jfunc-all
-$util/jf2sign jfunc-all $plugdir/dlsym-signs.txt > $plugdir/sign-all || die
 
-buildpass 1
-merged=$(mktemp)
-$util/merge deps-* > $merged || die "Merge failed."
-amended=$($util/amend-merge-output.sh $merged)
-mv $amended $plugdir/merged.vis
-
-buildpass 2
+if shallrun 0; then
+  buildpass 0
+  cat jfunc-* > jfunc-all
+  $util/jf2sign jfunc-all $plugdir/dlsym-signs.txt > $plugdir/sign-all || die
+fi
+if shallrun 1; then
+  buildpass 1
+  merged=$(mktemp)
+  $util/merge deps-* > $merged || die "Merge failed."
+  amended=$($util/amend-merge-output.sh $merged)
+  mv $amended $plugdir/merged.vis
+fi
+if shallrun 2; then
+  buildpass 2
+fi
