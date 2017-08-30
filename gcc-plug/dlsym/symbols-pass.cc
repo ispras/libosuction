@@ -582,16 +582,27 @@ parse_gimple_stmt (struct resolve_ctx *ctx, gimple stmt)
 static void
 process_calls (struct cgraph_node *node)
 {
-  unsigned HOST_WIDE_INT i;
+  unsigned HOST_WIDE_INT i, j;
   struct cgraph_edge *cs;
   tree symbol;
+  ipa_ref *ref = NULL;
+  struct signature *curr_sign = NULL;
 
   if (dump_file)
     fprintf (dump_file, "Calls:\n");
 
+  // Check on getting an address of dlsym call
+  for (i = 0; ipa_ref_list_reference_iterate (&node->ref_list, i, ref); i++)
+    for (j = 0; signatures.iterate (j, &curr_sign); j++)
+      if (!strcmp (curr_sign->func_name, assemble_name_raw (ref->referred))
+	  && ref->use == IPA_REF_ADDR)
+	warning_at (gimple_location (ref->stmt), 0,
+		    "the address of %<%s%> is used", curr_sign->func_name);
+
+  // Find out the callees which name is in the signatures
   for (cs = node->callees; cs; cs = cs->next_callee)
-    for (i = 0; i < signatures.length (); ++i)
-      if (!strcmp (signatures[i].func_name, assemble_name_raw (cs->callee)))
+    for (i = 0; signatures.iterate (i, &curr_sign); ++i)
+      if (!strcmp (curr_sign->func_name, assemble_name_raw (cs->callee)))
 	{
 	  if (dump_file)
 	    fprintf (dump_file, "\t%s matched to the signature\n",
@@ -599,13 +610,13 @@ process_calls (struct cgraph_node *node)
 
 	  resolve_ctx *ctx = XNEW (struct resolve_ctx);
 	  init_resolve_ctx (ctx);
-	  ctx->base_sign = &signatures[i];
+	  ctx->base_sign = curr_sign;
 	  ctx->loc = gimple_location (cs->call_stmt);
 	  ctx->node = node;
 
-	  push_call_info (ctx, node, cs->call_stmt, &signatures[i]);
+	  push_call_info (ctx, node, cs->call_stmt, curr_sign);
 
-	  symbol = gimple_call_arg (cs->call_stmt, signatures[i].sym_pos);
+	  symbol = gimple_call_arg (cs->call_stmt, curr_sign->sym_pos);
 	  ctx->status = parse_symbol (ctx, cs->call_stmt, symbol);
 
 	  pop_call_info (ctx);

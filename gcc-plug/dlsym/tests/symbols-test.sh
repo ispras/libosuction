@@ -6,7 +6,7 @@ COUNTER_TOTAL=0
 
 function compile_test() {
   echo "COMPILING $TFILE"
-  $TCOMPILER $TFILE $TFLAGS
+  $TCOMPILER $TFILE $TFLAGS &> $TFILE.log
 }
 
 function dump_contains() {
@@ -20,6 +20,22 @@ function dump_check_test() {
   COUNTER_TOTAL=$((COUNTER_TOTAL + 1))
   printf "TESTING $TFILE ($name):"
   local actual=$(dump_contains $TFILE.*i.$TPASS "$str")
+  if [ $expected -eq $actual ]
+  then
+    COUNTER_PASSED=$((COUNTER_PASSED + 1))
+    echo "PASS"
+  else
+    echo "FAIL: Expected $expected but actual is $actual"
+  fi
+}
+
+function log_check_test() {
+  local name="$1"
+  local str="$2"
+  local expected="$3"
+  COUNTER_TOTAL=$((COUNTER_TOTAL + 1))
+  printf "TESTING $TFILE ($name):"
+  local actual=$(dump_contains $TFILE.log "$str")
   if [ $expected -eq $actual ]
   then
     COUNTER_PASSED=$((COUNTER_PASSED + 1))
@@ -186,6 +202,14 @@ compile_test
 dump_check_test "sign" "dlsym matched to the signature" 1
 dump_check_test "const" "dlsym set state:CONSTANT" 1
 dump_check_test "sym" "main->dlsym->\[(baz,bar)|(bar,baz)\]" 1
+cleanup_test
+
+### dlsym_ref.c
+TFILE="dlsym_ref.c"
+
+compile_test
+log_check_test "warning" "12:17: warning: the address of ‘dlsym’ is used" 1
+log_check_test "warning" "13:18: warning: the address of ‘dlsym’ is used" 1
 cleanup_test
 
 ### dlvsym.c

@@ -63,12 +63,14 @@ typedef const gimple *const_gimple_ptr;
 #endif
 
 /* IPA/LTO related */
-#define ipa_ref_list_referring_iterate(L, I, P)	\
+#define ipa_ref_list_referring_iterate(L, I, P) \
 	(L)->referring.iterate((I), &(P))
+#define ipa_ref_list_reference_iterate(L,I,P) \
+	vec_safe_iterate ((L)->references, (I), &(P))
 #endif
 
 static inline const char *
-assemble_name_raw (struct cgraph_node *node)
+assemble_name_raw (struct symtab_node *node)
 {
   const char *name = IDENTIFIER_POINTER (DECL_ASSEMBLER_NAME (node->decl));
   return name + (name[0] == '*');
