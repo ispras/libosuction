@@ -9,7 +9,6 @@ typedef enum
   PARTIALLY_CONSTANT
 } resolve_lattice_t;
 
-// TODO warning &dlsym &func->dlsym
 struct signature
 {
   const char *func_name;
