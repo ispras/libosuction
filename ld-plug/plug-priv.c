@@ -281,6 +281,7 @@ claim_file_handler(const struct ld_plugin_input_file *file, int *claimed)
 	if ((status = compat_get_view(file, &view)))
 		return error("%s: get_view: %d", filename, status);
 
+	*claimed = 0;
 	const char *errmsg
 	    = process_elf(file->fd, file->offset, file->filesize, view,
 			  &nplugsyms, &plugsyms, claimed);
