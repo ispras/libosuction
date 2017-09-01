@@ -1,6 +1,6 @@
 -include config.mak
 
-CFLAGS += -D_FILE_OFFSET_BITS=64
+CPPFLAGS += -D_FILE_OFFSET_BITS=64
 CFLAGS += -std=gnu11
 CFLAGS += -fpic
 CFLAGS += -ffunction-sections -fdata-sections

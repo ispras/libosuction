@@ -24,7 +24,7 @@ Configuration:
 Some influential environment variables:
   CC                      C compiler command [detected: gcc/c99/cc]
   CFLAGS                  C compiler flags
-  CPPFLAGS                C preprocessor flags [-I.]
+  CPPFLAGS                C preprocessor flags [-I. -DSECTIONS]
   CXX                     C++ compiler command [detected: g++/c++]
   CXXFLAGS                C++ compiler flags
   LDFLAGS                 linker flags
@@ -70,7 +70,9 @@ if test "$release" = no -a "$debug" = no; then
     die "$0: either --release or --debug must be specified"
 fi
 
-CPPFLAGS="$CPPFLAGS -I."
+# TODO: consider putting privatized symbols into seperate sections (in the
+# compiler plugin) instead of always having to build the wrapper with -DSECTIONS.
+CPPFLAGS="$CPPFLAGS -I. -DSECTIONS"
 
 if test "$debug" = yes; then
     CFLAGS="$CFLAGS -g -fno-inline-functions"
