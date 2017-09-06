@@ -34,4 +34,10 @@ cd $(dirname $(realpath $0))
 LD_LIBRARY_PATH=. ./exe1
 [ "$?" != 125 ] && fail
 
+./exe3-1
+[ "$?" != 49 ] && fail
+
+./exe3-2
+[ "$?" != 49 ] && fail
+
 pass

@@ -31,6 +31,7 @@ all: $(ALL)
 install: all
 	cp $(GCC_PLUG_LIBS) $(AUXILIARY) $(plugdir)
 	mkdir -p $(plugdir)/ld && cp $(LD_PLUG_LIBS) $(plugdir)/ld
+	ar x /usr/lib64/libg.a dummy.o && mv dummy.o $(plugdir)/ld
 export
 check: all install
 	$(MAKE) -C gcc-plug/hide check

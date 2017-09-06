@@ -17,6 +17,7 @@
 #define ALTDIR (PLUGDIR "ld/")
 #define PLUGIN (PLUGDIR "ld/libplug.so")
 #define PLUGIN_PRIV (PLUGDIR "ld/libplug-priv.so")
+#define DUMMY_OBJ (PLUGDIR "ld/dummy.o")
 
 #if (!(GCC_RUN == 1 || GCC_RUN == 2))
 #error "Compile ld wrapper with -DGCC_RUN={1,2}"
@@ -110,8 +111,9 @@ ok:;
 	char origcmd[7 + sizeof ALTDIR] = ALTDIR;
 	strcpy(origcmd + sizeof ALTDIR - 1, name);
 
-	char *newargv[argc + 6];
-	memcpy(newargv, argv, argc * sizeof *argv);
+	char *newargv[argc + 7];
+	newargv[0] = argv[0];
+	memcpy(newargv + GCC_RUN, argv + 1, argc * sizeof *argv);
 
 	char optstr[128];
 	gen_linkid(optstr, argc, argv);
@@ -128,6 +130,8 @@ ok:;
 	newargv[argc++] = "--plugin";
 	newargv[argc++] = PLUGIN;
 #else
+	newargv[1] = DUMMY_OBJ;
+	argc++;
 	newargv[argc++] = "--gc-sections";
 	newargv[argc++] = "--plugin";
 	newargv[argc++] = PLUGIN_PRIV;
