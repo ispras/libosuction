@@ -21,3 +21,6 @@ $CC  {1,2,3}.o -o exe3-1 || exit 10
 ld -r 2.o 3.o -o exe-reloc.os || exit 11
 ld -shared -fPIC exe-reloc.os -lc -o lib4.so || exit 12
 $CC unrelated.c -L. -l4 -o exe4
+
+$CC -shared libdls.c -o libtdls.so || exit 13
+$CC dls.c -ldl -o exe5 || exit 14

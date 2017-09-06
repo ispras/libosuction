@@ -130,7 +130,8 @@ fi
 if shallrun 1; then
   buildpass 1
   merged=$plugdir/merged.vis
-  $util/merge deps-* > $merged || die "Merge failed."
+  cat dlsym-* | grep CONSTANT > dyndeps # FIXME: merge dynamic annotations
+  $util/merge dyndeps deps-* > $merged || die "Merge failed."
   amended=$($util/amend-merge-output.sh $merged)
   mv $amended $plugdir/merged.vis.gcc
 fi

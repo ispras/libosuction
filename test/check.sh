@@ -40,4 +40,7 @@ LD_LIBRARY_PATH=. ./exe1
 ./exe3-2
 [ "$?" != 113 ] && fail
 
+./exe5 > /dev/null || fail
+(./exe5 | grep FAIL) && fail
+
 pass

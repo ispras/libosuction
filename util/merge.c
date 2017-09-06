@@ -156,6 +156,66 @@ obj_htab_lookup(const char *srcid)
 			return ptr;
 	}
 }
+static void
+input_dyndeps(FILE *f)
+{
+	char *srcid, *scn, *sym, c;
+	while (fscanf(f, "%*[^:]:%*d:%m[^:]:%m[^:]:%*[^:]:%*[^:]%c",
+		      &srcid, &scn, &c) == 3 && c == ':') {
+		struct obj **objp = obj_htab_lookup(srcid), *o = *objp;
+		if (!*objp) {
+			*objp = o = calloc(1, sizeof *o);
+			o->srcid = srcid;
+			o->srcidmain = o;
+			objs_htab.used++;
+		} else {
+			free(srcid);
+			srcid = (char *)o->srcid;
+		}
+		struct scn *s = 0;
+		for (int i = 0; i < o->nscn; i++)
+			if (!strcmp(scn, o->scns[i].name)) {
+				s = o->scns + i;
+				break;
+			}
+		if (!s) {
+			o->scns = realloc(o->scns, ++o->nscn * sizeof *o->scns);
+		        s = &o->scns[o->nscn - 1];
+			memset(s, 0, sizeof *s);
+			s->name = scn;
+		} else {
+			free(scn);
+			scn = (char *)s->name;
+		}
+		do {
+			fscanf(f, "%m[^,\n]%c", &sym, &c);
+			struct sym **symp = sym_htab_lookup(sym), *y = *symp;
+			if (!*symp) {
+				*symp = y = calloc(1, sizeof *y);
+				syms_htab.used++;
+				y->name = sym;
+				y->weak = 'U';
+				y->vis = 'd';
+				y->n.kind = N_SYM;
+			} else {
+				free(sym);
+				sym = (char *)y->name;
+			}
+			s->n.out = realloc(s->n.out, ++s->n.nout * sizeof *s->n.out);
+			s->n.out[s->n.nout - 1] = &y->n;
+		} while (c == ',');
+	}
+}
+struct scn *
+find_dyndeps_scn(struct obj *o, const char *scn)
+{
+	if (o->path)
+		return 0;
+	for (int i = 0; i < o->nscn; i++)
+		if (!strcmp(scn, o->scns[i].name))
+			return o->scns + i;
+	return 0;
+}
 static int
 is_implicitly_used_section(const char *name)
 {
@@ -194,14 +254,18 @@ input(struct dso *dso, FILE *f)
 			/* XXX c++ exceptions hack */
 			if (!s->used)
 				s->used = is_implicitly_used_section(s->name);
+			struct scn *ds = find_dyndeps_scn(o->srcidmain, s->name);
 			fscanf(f, "%d", &s->nscndeps);
-			if (!s->nscndeps) continue;
-			s->scndeps = malloc(s->nscndeps * sizeof *s->scndeps);
+			int alloc = s->nscndeps + !!ds;
+			if (!alloc) continue;
+			s->scndeps = malloc(alloc * sizeof *s->scndeps);
 			for (int i = 0; i < s->nscndeps; i++) {
 				int t;
 				fscanf(f, "%d", &t);
 				s->scndeps[i] = dso->scn + t;
 			}
+			if (ds)
+				s->scndeps[s->nscndeps++] = ds;
 		}
 	}
 	fscanf(f, "%d", &dso->nsym);
@@ -476,14 +540,17 @@ static void mark(struct dso *dsos, int n)
 
 int main(int argc, char *argv[])
 {
-	struct dso dsos[argc-1];
+	struct dso dsos[argc-2];
 	for (int i = 1; i < argc; i++) {
 		FILE *f = fopen(argv[i], "r");
 		if (!f) return 1;
-		input(dsos+i-1, f);
+		if (i == 1)
+			input_dyndeps(f);
+		else
+			input(dsos+i-2, f);
 		fclose(f);
 	}
 	//scc(dsos); return 0;
-	link(dsos, argc-1);
-	mark(dsos, argc-1);
+	link(dsos, argc-2);
+	mark(dsos, argc-2);
 }
