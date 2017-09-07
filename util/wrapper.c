@@ -1,3 +1,4 @@
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -7,6 +8,7 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
+#include <sys/wait.h>
 
 #include <elf.h>
 
@@ -22,6 +24,8 @@
 #if (!(GCC_RUN == 1 || GCC_RUN == 2))
 #error "Compile ld wrapper with -DGCC_RUN={1,2}"
 #endif
+
+#define SRCID_FILE PLUGDIR "srcid.o"
 
 static int get_elfnote_srcid(unsigned char *md5sum, const unsigned char *view)
 {
@@ -93,7 +97,54 @@ static void gen_linkid(char *md5out, int argc, char *argv[])
 			for (int j = 0; j < sizeof md5sum; j++)
 				md5all[j] ^= md5sum[j];
 	}
+	if (nobjs == 1) md5all[15]++;
 	printmd5(md5out, md5all);
+}
+
+static void parse_entry_out(int argc, char **argv, char **entry, char **outfile)
+{
+	static const char *eo[] = { "--entry", "--entr", "--ent", "--en",
+				    "--output", "--outpu", "--outp", "--out", "--ou" };
+	for (int i = 1; i < argc; i++) {
+		char *arg = argv[i];
+		int arglen = strlen(arg);
+
+		if (!strncmp(arg, "-o", 2) || !strncmp(arg, "-e", 2)) {
+			char **smth = arg[1] == 'o' ? outfile : entry;
+			if (strlen (arg) == 2 && i < argc - 1)
+				*smth = argv[i + 1];
+			else
+				*smth = arg + 2;
+		}
+
+		for (int j = 0; j < (int)(sizeof eo / sizeof *eo); j++) {
+			int eojlen = strlen(eo[j]);
+			char **smth = eo[j][2] == 'o' ? outfile : entry;
+			if (!strncmp(arg, eo[j], eojlen)) {
+				if (arglen == eojlen && i < argc - 1)
+					*smth = argv[i + 1];
+				else if (arg[eojlen] == '=')
+					*smth = arg + eojlen;
+			}
+		}
+	}
+}
+
+void exec_child(char *cmd, char **argv)
+{
+	pid_t cpid = fork();
+	if (cpid == -1)
+		die("ld-wrapper: fork: %s\n", strerror(errno));
+	if (cpid == 0) {
+		execv(cmd, argv);
+		die("ld-wrapper: execve: %s\n", strerror(errno));
+	}
+	int status;
+	pid_t w = waitpid(cpid, &status, 0);
+	if (w == -1)
+		die("ld-wrapper: waitpid: %s\n", strerror(errno));
+	if (!WIFEXITED(status))
+		die("ld-wrapper: child terminated abnormally");
 }
 
 int main(int argc, char *argv[])
@@ -108,24 +159,39 @@ int main(int argc, char *argv[])
 	die("bad wrapped command\n");
 ok:;
 
+	char *entry = "_start";
+	char *outfile = "a.out";
+	parse_entry_out(argc, argv, &entry, &outfile);
+
 	char origcmd[7 + sizeof ALTDIR] = ALTDIR;
 	strcpy(origcmd + sizeof ALTDIR - 1, name);
 
-	char *newargv[argc + 7];
-	newargv[0] = argv[0];
-	memcpy(newargv + GCC_RUN, argv + 1, argc * sizeof *argv);
+	char *storage[argc + 7];
+	char **newargv = storage;
+
+	bool incremental_p = false;
 
 	char optstr[128];
 	gen_linkid(optstr, argc, argv);
-#if GCC_RUN == 1
-	int sockfd = daemon_connect(argc, argv, "Linker"[0]);
 
-	char *entry = "_start";
-	for (int i = 1; i < argc - 1; i++)
-		if (!strcmp(argv[i], "-e")) {
-			entry = argv[i+1];
+	for (int i = 1; i < argc; i++)
+		if (!strcmp(argv[i], "-r") || !strcmp(argv[i], "-i")
+		    || !strcmp(argv[i], "--relocatable")) {
+			incremental_p = true;
 			break;
 		}
+
+	/* Can't set --gc-sections with -r (without specifying a single root). */
+	if (incremental_p && GCC_RUN == 2) {
+		newargv = argv;
+		goto exec;
+	}
+
+	newargv[0] = argv[0];
+	memcpy(newargv + GCC_RUN, argv + 1, argc * sizeof *argv);
+
+#if GCC_RUN == 1
+	int sockfd = daemon_connect(argc, argv, "Linker"[0]);
 	snprintf(optstr + 32, sizeof optstr - 32, ":%s:%d", entry, sockfd);
 	newargv[argc++] = "--plugin";
 	newargv[argc++] = PLUGIN;
@@ -140,6 +206,37 @@ ok:;
 	newargv[argc++] = "--plugin-opt";
 	newargv[argc++] = optstr;
 	newargv[argc++] = 0;
-	execv(origcmd, newargv);
-	die("execve: %s\n", strerror(errno));
+exec:;
+	if (incremental_p) {
+		exec_child(origcmd, newargv);
+		char *strip_argv[] = { "strip",
+				       "--remove-section=" PLUG_SECTION_PREFIX "*",
+				       "--wildcard", "--keep-symbol=*",
+				       outfile, NULL };
+		exec_child("/usr/bin/strip", strip_argv);
+
+		char tmpfile[] = "/tmp/ld-r-XXXXXX";
+		int tmpfd = mkstemp(tmpfile);
+		if (-1 == tmpfd) die("ld-wrapper: cannot create temp file");
+		close(tmpfd);
+
+		char *ld_r_argv[] = { origcmd,
+				      "--relocatable", outfile, SRCID_FILE,
+				      "-o", tmpfile, NULL };
+		exec_child(origcmd, ld_r_argv);
+
+		char rename_expr[] =
+			PLUG_SECTION_PREFIX  "0123456789abcdef0123456789abcdef" "="
+			PLUG_SECTION_PREFIX "\0_23456789abcdef0123456789abcdef";
+		strncpy(rename_expr + strlen(rename_expr), optstr, 32);
+		char *objcopy_arv[] = { "objcopy",
+					"--rename-section", rename_expr,
+					tmpfile, outfile, NULL };
+		exec_child("/usr/bin/objcopy", objcopy_arv);
+		unlink(tmpfile);
+	} else {
+		execv(origcmd, newargv);
+		die("execve: %s\n", strerror(errno));
+	}
+	return 0;
 }

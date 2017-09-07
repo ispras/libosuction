@@ -172,7 +172,7 @@ input(struct dso *dso, FILE *f)
 	char is_dso;
 	fscanf(f, " %c %d %d %ms %ms %ms", &is_dso, &dso->nobj, &dso->nscn,
 	       &dso->name, &dso->entrypoint, &dso->linkid);
-	dso->is_dso = is_dso == 'D';
+	dso->is_dso = is_dso;
 	struct obj *o = dso->obj = calloc(dso->nobj, sizeof *dso->obj);
 	struct scn *s = dso->scn = calloc(dso->nscn, sizeof *dso->scn);
 	for (; o < dso->obj + dso->nobj; o++) {
@@ -425,6 +425,8 @@ static void mark(struct dso *dsos, int n)
 	int nelim = 0, nloc = 0, nhid = 0;
 	struct sym *elimstack = 0, *locstack = 0, *hidstack = 0;
 	for (struct dso *dso = dsos; dso < dsos + n; dso++) {
+		if (dso->is_dso == 'R')
+			continue;
 		int nelim0 = nelim, nloc0 = nloc, nhid0 = nhid;
 		for (struct sym *y = dso->sym; y < dso->sym + dso->nsym; y++) {
 			if (y->weak == 'U') continue;

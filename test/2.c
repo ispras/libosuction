@@ -7,5 +7,5 @@ int foo()
 
 int bar ()
 {
-  return 5 * 8;
+  return 5 * 8 + somefoo();
 }

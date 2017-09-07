@@ -2,4 +2,5 @@
 #define _TWO_H
 int foo();
 int bar();
+int somefoo();
 #endif

@@ -12,8 +12,12 @@ $CC main.o -L. -ltpriv -o exe1 || exit 5
 $CXX -fno-rtti -g -O0 -c main2.cc -o main2.o  || exit 7
 $CXX main2.o -L. -ltpriv -o exe2 || exit 8
 
-$CC -c {1,2}.c || exit 9
+$CC -c -fPIC {1,2,3}.c || exit 9
 # Test --gc-sections and workaround for ld bug (the latter could be tested more
 # precisely by ld invocation with --as-needed -ltpriv --no-as-needed {1,2}.o)
-$CXX {1,2}.o -o exe3-2 || exit 10
-$CC  {1,2}.o -o exe3-1 || exit 10
+$CXX {1,2,3}.o -o exe3-2 || exit 10
+$CC  {1,2,3}.o -o exe3-1 || exit 10
+# Test ld -r
+ld -r 2.o 3.o -o exe-reloc.os || exit 11
+ld -shared -fPIC exe-reloc.os -lc -o lib4.so || exit 12
+$CC unrelated.c -L. -l4 -o exe4

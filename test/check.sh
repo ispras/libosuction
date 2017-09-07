@@ -35,9 +35,9 @@ LD_LIBRARY_PATH=. ./exe1
 [ "$?" != 125 ] && fail
 
 ./exe3-1
-[ "$?" != 49 ] && fail
+[ "$?" != 113 ] && fail
 
 ./exe3-2
-[ "$?" != 49 ] && fail
+[ "$?" != 113 ] && fail
 
 pass
