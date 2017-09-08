@@ -125,7 +125,7 @@ dpid=$!
 if shallrun 0; then
   buildpass 0
   cat jfunc-* > jfunc-all
-  $util/jf2sign jfunc-all $plugdir/dlsym-signs.txt > $plugdir/sign-all || die
+  $util/jf2sign jfunc-all $util/dlsym-signs-base.txt > $plugdir/dlsym-signs.txt || die
 fi
 if shallrun 1; then
   buildpass 1
