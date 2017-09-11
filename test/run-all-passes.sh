@@ -44,9 +44,9 @@ setwrappers() {
   cp $util/gcc-wrapper-$pass $gxx
 
   if [ "$pass" = 0 ]; then
-    cp $real_ld $lddir/ld
+    cp $real_ld $lddir/
   else
-    cp $util/wrapper-$pass $lddir/ld
+    cp $util/wrapper-$pass $lddir/$(basename $real_ld)
   fi
 }
 
@@ -88,9 +88,6 @@ test -n "$bldcmd" ||
   die "Please pass a valid build command. Run $0 -h for help."
 file "$bldcmd" &>/dev/null && test -x "$bldcmd" && bldcmd=$(realpath $bldcmd)
 
-test -z "$real_ld" && real_ld=$plugdir/ld/ld
-test -e "$real_ld" || real_ld=$(which ld)
-
 srcroot="$(dirname $(realpath $0))/.."
 cfg=$srcroot/config.mak
 util=$srcroot/util
@@ -112,6 +109,8 @@ else
   die "$gcc_real already exists."
 fi
 
+test -z "$real_ld" && real_ld=$plugdir/ld/ld
+test -e "$real_ld" || real_ld=$(which ld)
 
 tmpdir=$(mktemp -d "$plugdir/temps.XXX")
 lddir="$tmpdir"
