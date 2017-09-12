@@ -281,7 +281,7 @@ emit_privplugid_section (void *, void *)
 {
   char buf[] =
    "\t.pushsection\t" PLUG_SECTION_PREFIX
-   "\0_23456789abcdef0123456789abcdef,\"e\",@note\n"
+   "\0_23456789abcdef0123456789abcdef,\"e\",%note\n"
    "\t.popsection\n";
   strncpy (buf + strlen (buf), md5str, 32);
   fprintf (asm_out_file, "%s", buf);
