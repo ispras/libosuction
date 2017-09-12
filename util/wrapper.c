@@ -63,7 +63,7 @@ static int get_elfnote_srcid(unsigned char *md5sum, const unsigned char *view)
 static int get_srcid(unsigned char *md5sum, const char *filename)
 {
 	int fd, status = 0;
-	if (fd = open(filename, O_RDONLY) < 0)
+	if ((fd = open(filename, O_RDONLY)) < 0)
 		return 0;
 	struct stat s;
 	if (fstat(fd, &s) < 0)
