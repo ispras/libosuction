@@ -237,7 +237,7 @@ input(struct dso *dso, FILE *f)
 				for (s = dso->scn; s < dso->scn + dso->nscn; s++)
 					if (!strcmp(s->name, scnname))
 						y->n.out[ndep++] = &s->n;
-				y->weak = 'D'; y->vis = 'h';
+				y->weak = 'C'; y->vis = 'h';
 			}
 		}
 		if (!strcmp(y->name, dso->entrypoint))
