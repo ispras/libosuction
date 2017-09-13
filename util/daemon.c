@@ -55,12 +55,14 @@ int main()
 		    snprintf(namebuf, sizeof namebuf, "unknown-%03d", fn);
 		    break;
 		  }
-		FILE *out = fopen(namebuf, "w");
+		FILE *out = NULL;
 		char buf[4096];
 		size_t len;
-		while ((len = fread(buf, 1, sizeof buf, f)) > 0)
+		while ((len = fread(buf, 1, sizeof buf, f)) > 0) {
+			if (!out) out = fopen(namebuf, "w");
 			fwrite(buf, 1, len, out);
-		fclose(out);
+		}
+		if (out) fclose(out);
 		fclose(f);
 	}
 	return 0;
