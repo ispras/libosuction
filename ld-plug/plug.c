@@ -355,7 +355,7 @@ static int
 sym_weak(int elfbind, int elfscn)
 {
 	if (!elfscn) return W_UNDEF;
-	if (elfscn == SHN_COMMON) return W_COMMON;
+	if (elfscn == SHN_COMMON || elfscn == SHN_ABS) return W_COMMON;
 	if (elfbind == STB_GNU_UNIQUE) elfbind = STB_WEAK;
 	return elfbind == STB_WEAK ? W_WEAK : W_STRONG;
 }
@@ -464,6 +464,8 @@ process_elf(const char *filename, off_t offset, off_t filesize,
 				symptrs[j] = ssym.section ? &ssym.section->anchorsym : 0;
 				continue;
 			}
+			if (shndx && !ssym.section->name)
+				return "reference to uninitialized section";
 			if (!sym->st_name)
 				return "unnamed non-local symbol";
 
