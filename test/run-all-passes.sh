@@ -131,6 +131,7 @@ if shallrun 1; then
   buildpass 1
   merged=$plugdir/merged.vis
   cat dlsym-* | grep CONSTANT > dyndeps # FIXME: merge dynamic annotations
+  cp $util/force-dynamic deps-force-dynamic # The name ensures globbing won't fail.
   $util/merge dyndeps deps-* > $merged || die "Merge failed."
   amended=$($util/amend-merge-output.sh $merged)
   mv $amended $plugdir/merged.vis.gcc
