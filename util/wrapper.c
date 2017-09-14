@@ -91,9 +91,11 @@ static int gen_linkid(char *md5out, int argc, char *argv[])
 	for (int i = 1; i < argc; i++) {
 		char *arg = argv[i];
 		size_t l = strlen(arg);
-		if (l < 2 || arg[l-1] != 'o') continue;
-		if (l == 2 && arg[0] == '-') { i++; continue; }
-		if (arg[l-2] != '.') continue;
+		if (!strcmp(arg, "-o")) { i++; continue; }
+		if (!(l >= 2 && !strcmp(".o", arg + l - 2)
+		      || l >= 3 && (!strcmp(".os", arg + l - 3)
+				    || !strcmp(".lo", arg + l - 3))))
+		      continue;
 		nobjs++;
 		if (get_srcid(md5sum, arg))
 			for (int j = 0; j < sizeof md5sum; j++)
