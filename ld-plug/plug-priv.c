@@ -89,6 +89,7 @@ read_syms(const char *linkid, const char *file)
 		return "error opening file";
 	int nlocsyms, nhidsyms;
 	char id[33];
+	int found = 0;
 	while (fscanf(f, "%d %d %32s", &nlocsyms, &nhidsyms, id) == 3) {
 		if (strcmp(id, linkid)) {
 			for (int i = 0; i < nlocsyms + nhidsyms; i++)
@@ -106,9 +107,16 @@ read_syms(const char *linkid, const char *file)
 			*symp = malloc(sizeof **symp);
 			**symp = s;
 		}
+		found = 1;
 		break;
 	}
 	fclose(f);
+	static char errmsg[] =
+		"could not find linkid \0_23456789abcdef0123456789abcdef";
+	if (!found) {
+		strncpy(errmsg + strlen(errmsg), linkid, 32);
+		return errmsg;
+	}
 	return 0;
 }
 static char *
