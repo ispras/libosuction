@@ -84,8 +84,9 @@ done:
 	return status;
 }
 
-static void gen_linkid(char *md5out, int argc, char *argv[])
+static int gen_linkid(char *md5out, int argc, char *argv[])
 {
+	int nobjs = 0;
 	unsigned char md5sum[16], md5all[16] = { 0 };
 	for (int i = 1; i < argc; i++) {
 		char *arg = argv[i];
@@ -93,12 +94,14 @@ static void gen_linkid(char *md5out, int argc, char *argv[])
 		if (l < 2 || arg[l-1] != 'o') continue;
 		if (l == 2 && arg[0] == '-') { i++; continue; }
 		if (arg[l-2] != '.') continue;
+		nobjs++;
 		if (get_srcid(md5sum, arg))
 			for (int j = 0; j < sizeof md5sum; j++)
 				md5all[j] ^= md5sum[j];
 	}
 	if (nobjs == 1) md5all[15]++;
 	printmd5(md5out, md5all);
+	return nobjs;
 }
 
 static void parse_entry_out(int argc, char **argv, char **entry, char **outfile)
@@ -172,7 +175,10 @@ ok:;
 	bool incremental_p = false;
 
 	char optstr[128];
-	gen_linkid(optstr, argc, argv);
+	if (!gen_linkid(optstr, argc, argv)) {
+		newargv = argv;
+		goto exec;
+	}
 
 	for (int i = 1; i < argc; i++)
 		if (!strcmp(argv[i], "-r") || !strcmp(argv[i], "-i")
