@@ -23,10 +23,6 @@
 
 int plugin_is_GPL_compatible;
 
-/* Could have written #include "output.h" to the same effect.  We only need this
-   one declaration from that file though.  */
-extern const char *user_label_prefix;
-
 namespace {
 
 static char md5str[32];
