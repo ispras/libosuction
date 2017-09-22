@@ -196,7 +196,7 @@ ok:;
 	}
 
 	newargv[0] = argv[0];
-	memcpy(newargv + GCC_RUN, argv + 1, argc * sizeof *argv);
+	memcpy(newargv + GCC_RUN, argv + 1, (argc - 1) * sizeof *argv);
 
 #if GCC_RUN == 1
 	int sockfd = daemon_connect(argc, argv, "Linker"[0]);
