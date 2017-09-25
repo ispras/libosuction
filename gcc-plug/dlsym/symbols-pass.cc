@@ -530,8 +530,8 @@ parse_symbol (struct resolve_ctx *ctx, gimple stmt, tree symbol)
 	}
 
     case INTEGER_CST:
-      /* Allow null reference, permit another */
-      // TODO null?
+      /* If SYMBOL is a 0 it is a null reference,
+	 otherwise it is interpreted as a run-time memory address */
       return ! tree_to_shwi (symbol) ? CONSTANT : DYNAMIC;
 
     default:
@@ -560,8 +560,6 @@ parse_gimple_stmt (struct resolve_ctx *ctx, gimple stmt)
       break;
 
     case GIMPLE_PHI:
-      /*TODO phi cycles are currently unavalable because of absence of
-	string changes handling */
       if (dump_file)
 	fprintf (dump_file, "\tPHI statement def: iterate each of them\n");
       for (i = 0; i < gimple_phi_num_args (stmt); i++)
