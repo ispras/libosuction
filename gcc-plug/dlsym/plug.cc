@@ -28,6 +28,10 @@ printmd5 (char *p, const unsigned char md5[])
 void
 compute_md5 (void *, void *)
 {
+  /* Do not compute md5 hash due to absense the body */
+  if (in_lto_p)
+    return;
+
   char *streamptr;
   size_t streamsz;
   FILE *f = open_memstream (&streamptr, &streamsz);
