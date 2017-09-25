@@ -1,11 +1,13 @@
 /* Copyright (C) 2017 Vladislav Ivanishin */
 
+#include <cstdio>
+
 #include "bversion.h"
 #include "gcc-plugin.h"
 #include "opts.h"
-#include "output.h"
 #include "toplev.h"
 #include "tree.h"
+#include "output.h"
 #include "tree-cfg.h"
 #include "tree-pass.h"
 #include "plugin-version.h"
@@ -337,6 +339,8 @@ plugin_init (plugin_name_args *i, plugin_gcc_version *v)
   struct register_pass_info pass_info;
   char *fname = NULL;
   long gcc_run = 0;
+
+  gcc_version.configuration_arguments = v->configuration_arguments;
 
   if (!plugin_default_version_check (&gcc_version, v))
     {

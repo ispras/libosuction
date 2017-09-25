@@ -223,6 +223,8 @@ parse_arguments (int argc, plugin_argument *argv)
 int
 plugin_init (plugin_name_args *plugin_info, plugin_gcc_version *version)
 {
+  gcc_version.configuration_arguments = version->configuration_arguments;
+
   if (!plugin_default_version_check (&gcc_version ,version))
     return 1;
 

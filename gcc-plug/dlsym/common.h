@@ -1,6 +1,8 @@
 #ifndef PLUG_H_INCLUDED
 #define PLUG_H_INCLUDED
 
+#include <cstdio>
+
 #include "bversion.h"
 #if BUILDING_GCC_VERSION < 4009
 #error "This gcc is too old. The minimum required version is 4.9.x"
