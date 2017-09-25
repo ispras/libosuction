@@ -494,7 +494,7 @@ process_elf(const char *filename, off_t offset, off_t filesize,
 		for (ssize_t j=0, o=0; j < nrels; j++, r++, o+=shdr->sh_entsize) {
 			Rel *rel = (void *)(view + shdr->sh_offset + o);
 			struct sym *sym = symtabscn->symptrs[ELF_R_SYM(rel->r_info)];
-			dg_rel_init(r, relscn, sym);
+			if (sym) dg_rel_init(r, relscn, sym);
 		}
 	}
 	for (int i = symtabidx; i; i = dg_section(i)->next)
