@@ -3,6 +3,7 @@
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
+#include <sys/auxv.h>
 
 #include "wrapper-common.h"
 
@@ -37,8 +38,9 @@ int main(int argc, char *argv[])
 	int sockfd = daemon_connect (argc, argv, "Compiler"[0]);
 #endif
 
-	char origcmd[strlen (argv[0]) + sizeof ORIG_CMD_SUFFIX];
-	strcpy(origcmd, argv[0]);
+	char *fullname = (char *)getauxval(AT_EXECFN);
+	char origcmd[strlen (fullname) + sizeof ORIG_CMD_SUFFIX];
+	strcpy(origcmd, fullname);
 	strcat(origcmd, ORIG_CMD_SUFFIX);
 
 	const char *newargv[argc + 7 + 1];
