@@ -49,10 +49,14 @@ collect_jfunc (void)
 {
   struct cgraph_node *node;
 
-  // Fix the bodies and the call graph
+  /* Transforms were obligatory applied after each pass
+     until version 5000. Here we have to apply them manually
+     due to benefits from previous ipa passes. */
+#if BUILDING_GCC_VERSION >= 5000
   FOR_EACH_FUNCTION_WITH_GIMPLE_BODY (node)
     if (!node->global.inlined_to)
-      cgraph_get_body (node);
+      node->get_body();
+#endif
 
   FOR_EACH_FUNCTION_WITH_GIMPLE_BODY (node)
     {
