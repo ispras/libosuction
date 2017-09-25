@@ -40,6 +40,7 @@ check: all install
 	test/run-all-passes.sh test/build.sh && test/check.sh
 clean:
 	find . -name '*.o' -o -name '*.so' | xargs -I % rm %
+	rm $(TOOLS)
 distclean: clean
 	rm -f confdef.h config.mak
 
