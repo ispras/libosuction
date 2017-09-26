@@ -589,6 +589,12 @@ process_calls (struct cgraph_node *node)
   if (dump_file)
     fprintf (dump_file, "Calls:\n");
 
+  /* Ignore the node collided with signatures due to the
+     assumption that a user already analyzed them manually */
+  for (i = 0; signatures.iterate (i, &curr_sign); i++)
+    if (!strcmp (assemble_name_raw (node), curr_sign->func_name))
+      return;
+
   // Check on getting an address of dlsym call
   for (i = 0; ipa_ref_list_reference_iterate (&node->ref_list, i, ref); i++)
     for (j = 0; signatures.iterate (j, &curr_sign); j++)
