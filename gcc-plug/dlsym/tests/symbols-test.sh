@@ -204,6 +204,13 @@ dump_check_test "const" "dlsym set state:CONSTANT" 1
 dump_check_test "sym" "main->dlsym->\[(baz,bar)|(bar,baz)\]" 1
 cleanup_test
 
+### dlsym_fake.c
+TFILE="dlsym_fake.c"
+
+compile_test
+log_check_test "warning" "9:32: warning: an inconsistent call of ‘dlsym’ is found, a symbol is expected at the argument position ‘1’" 1
+cleanup_test
+
 ### dlsym_ref.c
 TFILE="dlsym_ref.c"
 

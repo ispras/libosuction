@@ -602,6 +602,15 @@ process_calls (struct cgraph_node *node)
     for (i = 0; signatures.iterate (i, &curr_sign); ++i)
       if (!strcmp (curr_sign->func_name, assemble_name_raw (cs->callee)))
 	{
+	  if (gimple_call_num_args (cs->call_stmt) <= curr_sign->sym_pos)
+	    {
+	      warning_at (gimple_location (cs->call_stmt), 0,
+			  "an inconsistent call of %<%s%> is found, a symbol is "
+			  "expected at the argument position %<%d%>",
+			  curr_sign->func_name,
+			  curr_sign->sym_pos);
+	      continue;
+	    }
 	  if (dump_file)
 	    fprintf (dump_file, "\t%s matched to the signature\n",
 		     assemble_name_raw (cs->callee));
