@@ -158,7 +158,8 @@ parse_argument (plugin_argument *arg)
      means that name of caller is 'dlsym' and symbol is an argument no. 1. */
   if (!strncmp (arg_key, "sign-", 5) && arg_key[5] != '\0')
     {
-      struct signature initial = { xstrdup (&arg_key[5]), atoi (arg_value) };
+      struct signature initial = { xstrdup (&arg_key[5]),
+	  (unsigned) atoi (arg_value) };
       signatures.safe_push (initial);
       return;
     }
@@ -185,7 +186,7 @@ parse_argument (plugin_argument *arg)
      <signature name> <symbol position> */
   if (!strcmp(arg_key, "in"))
     {
-      int spos;
+      unsigned spos;
       const char *wname;
       FILE *input = fopen (arg_value, "r");
 

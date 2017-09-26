@@ -12,7 +12,7 @@ typedef enum
 struct signature
 {
   const char *func_name;
-  int sym_pos;
+  unsigned sym_pos;
 };
 
 /* Describes the context of particular function */

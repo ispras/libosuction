@@ -427,7 +427,7 @@ static resolve_lattice_t
 parse_default_def (struct resolve_ctx *ctx, tree default_def)
 {
   resolve_lattice_t result = UNDEFINED;
-  int arg_num;
+  unsigned arg_num;
   struct cgraph_edge *cs;
   struct call_info *call = get_current_call_info (ctx);
   tree t, symbol, sym_decl = SSA_NAME_IDENTIFIER (default_def);
