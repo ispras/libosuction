@@ -7,22 +7,24 @@ linecnt()
 
 merged=$1
 
-fstatics=$(mktemp --tmpdir statics-XXX)
-flibprivs=$(mktemp --tmpdir libprivs-XXX)
+felim=$(mktemp --tmpdir elim-XXX)
+floc=$(mktemp --tmpdir loc-XXX)
+fhid=$(mktemp --tmpdir hid-XXX)
 
-awk -F: -v statics="$fstatics" -v libprivs="$flibprivs" -- '
+awk -F: -v elim="$felim" -v loc="$floc" -v hid="$fhid" -- '
 BEGIN {
-  state = 0    # 0 -- in statics, 1 -- in libprivates
+  ELIM = 0; LOC = 1; HID = 2
+  state = ELIM
   SUBSEP = ":"
 }
 
-/[0-9]+ [0-9]+ [0-9a-f]{32,32}/ {
-  state = 0
+/[0-9]+ [0-9]+ [0-9]+ [0-9a-f]{32,32}/ {
+  state = ELIM
   next
 }
 
 /^$/ {
-  state = 1
+  state++
   next
 }
 
@@ -37,20 +39,24 @@ BEGIN {
 
 END {
   for (i in all)
-    if (all[i] == arr[i SUBSEP 0] + arr[i SUBSEP 1])
-      if (arr[i SUBSEP 1] > 0)
-        print obj[i]":"i >> libprivs
+    if (all[i] == arr[i SUBSEP ELIM] + arr[i SUBSEP LOC] + arr[i SUBSEP HID])
+      if (arr[i SUBSEP HID]  > 0)
+        print obj[i]":"i >> hid
+      else if (arr[i SUBSEP LOC] > 0)
+        print obj[i]":"i >> loc
       else
-        print obj[i]":"i >> statics
+        print obj[i]":"i >> elim
 } ' $merged
 
 result=$merged-$$
 
-echo "$(linecnt $fstatics) $(linecnt $flibprivs)" > $result
-cat $fstatics >> $result
+echo "$(linecnt $felim) $(linecnt $floc) $(linecnt $fhid)"> $result
+cat $felim >> $result
 echo >> $result
-cat $flibprivs >> $result
+cat $floc >> $result
+echo >> $result
+cat $fhid >> $result
 
-rm $fstatics $flibprivs
+rm $felim $floc $fhid
 
 echo $result

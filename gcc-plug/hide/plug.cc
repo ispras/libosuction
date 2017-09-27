@@ -85,14 +85,17 @@ public:
   void set_fname (const char *fname_) { fname = fname_; }
 
 private:
-  bool no_external_uses_p (symtab_node *node);
-  bool lib_private_p (symtab_node *node);
+  bool eliminate_p (symtab_node *node);
+  bool localize_p (symtab_node *node);
+  bool hide_p (symtab_node *node);
   void read_vis_changes (void);
   bool localize_comdat (symtab_node *node);
+  void do_localize_node (symtab_node *node);
 
   const char *fname; /* File to read visibility modifications info from.  */
-  splay_tree static_nodes;
-  splay_tree libprivate_nodes;
+  splay_tree elim_nodes;
+  splay_tree loc_nodes;
+  splay_tree hid_nodes;
 }; // class pass_hide_globally_invisible
 
 const char *
@@ -105,17 +108,21 @@ decl_name (const symtab_node *node)
 }
 
 bool
-pass_hide_globally_invisible::no_external_uses_p (symtab_node *node)
+pass_hide_globally_invisible::eliminate_p (symtab_node *node)
 {
-  return !!splay_tree_lookup (static_nodes,
-			      (splay_tree_key) decl_name (node));
+  return !!splay_tree_lookup (elim_nodes, (splay_tree_key) decl_name (node));
 }
 
 bool
-pass_hide_globally_invisible::lib_private_p (symtab_node *node)
+pass_hide_globally_invisible::localize_p (symtab_node *node)
 {
-  return !!splay_tree_lookup (libprivate_nodes,
-			      (splay_tree_key) decl_name (node));
+  return !!splay_tree_lookup (loc_nodes, (splay_tree_key) decl_name (node));
+}
+
+bool
+pass_hide_globally_invisible::hide_p (symtab_node *node)
+{
+  return !!splay_tree_lookup (hid_nodes, (splay_tree_key) decl_name (node));
 }
 
 void
@@ -131,7 +138,7 @@ read_decl_names (FILE *f, int num_nodes, splay_tree nodes)
       if ((fscanf (f, "%*[\n \t]%*[^:]%c%32[^:]%c%ms",
                    &c1, &srcid, &c2, &symname) != 4)
           || c1 != ':' || c2 != ':')
-        fatal_error ("error reading static/libprivate symbol names");
+        fatal_error ("error reading elim/loc/hid symbol names");
 
       if (!strncmp (md5str, srcid, 32))
 	  splay_tree_insert (nodes, (splay_tree_key) symname, 0);
@@ -142,17 +149,47 @@ void
 pass_hide_globally_invisible::read_vis_changes (void)
 {
   FILE *f;
-  int num_statics, num_libpriv;
+  int nelim, nloc, nhid;
 
   f = fopen (fname, "r");
   if (!f)
     fatal_error ("cannot open %s", fname);
 
-  fscanf (f, "%d %d", &num_statics, &num_libpriv);
-  read_decl_names (f, num_statics, static_nodes);
-  read_decl_names (f, num_libpriv, libprivate_nodes);
+  fscanf (f, "%d %d %d", &nelim, &nloc, &nhid);
+
+  read_decl_names (f, nelim, elim_nodes);
+
+  /*  Act conservatively if there can possibly be an alias defined via
+      `.symver`; if we localize the symbol such an alias will become local
+      as well.  We can't even make it hidden for the same reason.  */
+  if (!symtab->first_asm_symbol ())
+    {
+      read_decl_names (f, nloc, loc_nodes);
+      read_decl_names (f, nhid, hid_nodes);
+    }
 
   fclose (f);
+}
+
+void
+pass_hide_globally_invisible::do_localize_node (symtab_node *node)
+{
+  make_decl_local (node);
+
+  /* This code does the right thing but looks useless since control never
+     reaches inside the if.  Theoretical use-cases are
+     a. We have loc symbols, but no toplevel asms (symbols are local not due to
+        being in the same section as their .symver alias);
+     b. A comdat group member which is only local (while some other member of
+        the same comdat is eliminable).  */
+#if 0
+  if (localize_p (node))
+    {
+      node->force_output = 1;
+      TREE_USED (node->decl) = 1;
+      DECL_PRESERVE_P (node->decl) = 1;
+    }
+#endif
 }
 
 /* Tries to localize the comdat group NODE belongs to, returns TRUE on success.
@@ -166,7 +203,7 @@ pass_hide_globally_invisible::localize_comdat (symtab_node *node)
 
   for (next = node->same_comdat_group;
        next != node; next = next->same_comdat_group)
-    if (!no_external_uses_p (next))
+    if (!(eliminate_p (next) || localize_p (next)))
       return false;
 
   cur = node;
@@ -177,7 +214,7 @@ pass_hide_globally_invisible::localize_comdat (symtab_node *node)
       if (!cur->alias)
 	set_section (cur, NULL);
       if (!transparent_alias_p (cur))
-	make_decl_local (cur);
+	do_localize_node (cur);
       cur = next;
     }
   while (cur != node);
@@ -202,19 +239,22 @@ pass_hide_globally_invisible::execute (_EXECUTE_ARGS)
   symtab_node *node;
   bool priv_failed_p;
 
-  static_nodes = splay_tree_new ((splay_tree_compare_fn) strcmp,
-				 (splay_tree_delete_key_fn) free,
-				 0);
-  libprivate_nodes = splay_tree_new ((splay_tree_compare_fn) strcmp,
-				     (splay_tree_delete_key_fn) free,
-				     0);
+  elim_nodes = splay_tree_new ((splay_tree_compare_fn) strcmp,
+                               (splay_tree_delete_key_fn) free,
+                               0);
+  loc_nodes = splay_tree_new ((splay_tree_compare_fn) strcmp,
+                              (splay_tree_delete_key_fn) free,
+                              0);
+  hid_nodes = splay_tree_new ((splay_tree_compare_fn) strcmp,
+                              (splay_tree_delete_key_fn) free,
+                              0);
   read_vis_changes ();
 
   FOR_EACH_SYMBOL (node)
     {
       priv_failed_p = false;
 
-      if (no_external_uses_p (node))
+      if (localize_p (node) || eliminate_p (node))
 	{
 	  gcc_assert (!transparent_alias_p (node));
 
@@ -238,19 +278,19 @@ pass_hide_globally_invisible::execute (_EXECUTE_ARGS)
           if (node->same_comdat_group)
             priv_failed_p = !localize_comdat (node);
 	  else
-	    make_decl_local (node);
+	    do_localize_node (node);
 	}
     hide:
-      if ((lib_private_p (node) || priv_failed_p)
-	  && !dont_hide_p (node))
+      if ((hide_p (node) || priv_failed_p) && !dont_hide_p (node))
 	{
 	  DECL_VISIBILITY (node->decl) = VISIBILITY_HIDDEN;
 	  DECL_VISIBILITY_SPECIFIED (node->decl) = true;
 	}
     }
 
-  splay_tree_delete (static_nodes);
-  splay_tree_delete (libprivate_nodes);
+  splay_tree_delete (elim_nodes);
+  splay_tree_delete (loc_nodes);
+  splay_tree_delete (hid_nodes);
   return 0;
 }
 
