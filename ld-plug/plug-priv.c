@@ -87,17 +87,17 @@ read_syms(const char *linkid, const char *file)
 	FILE *f = fopen(file, "r");
 	if (!f)
 		return "error opening file";
-	int nlocsyms, nhidsyms;
+	int nelim, nloc, nhid;
 	char id[33];
 	int found = 0;
-	while (fscanf(f, "%d %d %32s", &nlocsyms, &nhidsyms, id) == 3) {
+	while (fscanf(f, "%d %d %d %32s", &nelim, &nloc, &nhid, id) == 4) {
 		if (strcmp(id, linkid)) {
-			for (int i = 0; i < nlocsyms + nhidsyms; i++)
+			for (int i = 0; i < nelim + nloc + nhid; i++)
 				fscanf(f, " %*[^\n]");
 			continue;
 		}
-		sym_htab_alloc(nlocsyms + nhidsyms);
-		for (int i = 0; i < nlocsyms + nhidsyms; i++) {
+		sym_htab_alloc(nelim + nloc + nhid);
+		for (int i = 0; i < nelim + nloc + nhid; i++) {
 			struct sym s;
 			fscanf(f, " %*[^:]:%32[0-9a-f]:%*d:%ms", id, &s.name);
 			unsigned *t = s.srcid;

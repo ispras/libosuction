@@ -422,16 +422,23 @@ static void mark(struct dso *dsos, int n)
 			if (s->used && !s->n.preorderidx)
 				dfs(&s->n);
 	}
-	int nloc = 0, nhid = 0;
-	struct sym *locstack = 0, *hidstack = 0;
+	int nelim = 0, nloc = 0, nhid = 0;
+	struct sym *elimstack = 0, *locstack = 0, *hidstack = 0;
 	for (struct dso *dso = dsos; dso < dsos + n; dso++) {
-		int nloc0 = nloc, nhid0 = nhid;
+		int nelim0 = nelim, nloc0 = nloc, nhid0 = nhid;
 		for (struct sym *y = dso->sym; y < dso->sym + dso->nsym; y++) {
 			if (y->weak == 'U') continue;
 			if (y->weak == 'C') continue;
 			if (!y->n.preorderidx) {
-				nloc++;
-				y->n.stacknext = &locstack->n; locstack = y;
+				if (!y->defscn->preorderidx) {
+					nelim++;
+					y->n.stacknext = &elimstack->n;
+					elimstack = y;
+				} else {
+					nloc++;
+					y->n.stacknext = &locstack->n;
+					locstack = y;
+				}
 			} else if (y->vis != 'h') {
 				struct sym *u = sym_htab_lookup_only(y->name);
 				if (!u || !u->n.preorderidx) {
@@ -440,7 +447,12 @@ static void mark(struct dso *dsos, int n)
 				}
 			}
 		}
-		printf("%d %d %s\n", nloc - nloc0, nhid - nhid0, dso->linkid);
+		printf("%d %d %d %s\n",
+		       nelim - nelim0, nloc - nloc0, nhid - nhid0, dso->linkid);
+		for (struct sym *y = elimstack; nelim0 < nelim; nelim0++,
+		     y = (void*)y->n.stacknext)
+			printsym(y);
+		puts("");
 		for (struct sym *y = locstack; nloc0 < nloc; nloc0++,
 		     y = (void*)y->n.stacknext)
 			printsym(y);
