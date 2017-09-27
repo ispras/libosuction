@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 
 struct jfunction
 {
@@ -19,6 +20,17 @@ struct list_node
 struct list_node *output;
 struct list_node *current;
 struct list_node *next;
+
+static bool
+has_duplicates (struct jfunction *jf, struct list_node *list)
+{
+  struct list_node *iter;
+  for (iter = list; iter; iter = iter->next)
+    if (!strcmp (jf->from_name, iter->jf->from_name)
+	&& jf->from_arg == iter->jf->from_arg)
+      return true;
+  return false;
+}
 
 int main (int argc, char *argv[])
 {
@@ -84,22 +96,10 @@ int main (int argc, char *argv[])
 	      if (!strcmp (temp->jf->to_name, cur_iter->jf->from_name)
 		  && temp->jf->to_arg == cur_iter->jf->from_arg)
 		{
-		  // Check that it is not a dublicate
-		  struct list_node *old_iter;
-		  for (old_iter = next; old_iter; old_iter = old_iter->next)
-		    if (!strcmp (temp->jf->from_name, old_iter->jf->from_name)
-			&& temp->jf->from_arg == old_iter->jf->from_arg)
-		      break;
-
-		  if (old_iter)
-		    break;
-
-		  for (old_iter = output; old_iter; old_iter = old_iter->next)
-		    if (!strcmp (temp->jf->from_name, old_iter->jf->from_name)
-			&& temp->jf->from_arg == old_iter->jf->from_arg)
-		      break;
-
-		  if (old_iter)
+		  /* Check duplicates in three disjoint lists */
+		  if (has_duplicates (temp->jf, next) ||
+		      has_duplicates (temp->jf, output) ||
+		      has_duplicates (temp->jf, current))
 		    break;
 
 		  // Include jf to dlsym signatures
