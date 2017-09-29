@@ -315,6 +315,10 @@ compmd5 (void *, void *)
       case OPT_flto:;
       case OPT_ffunction_sections:;
       case OPT_fdata_sections:;
+      case OPT_SPECIAL_input_file:;
+      case OPT_dumpbase:;
+      case OPT_dumpdir:;
+      case OPT_auxbase:;
       }
   fclose (f);
 
