@@ -222,7 +222,7 @@ process_elf(int fd, off_t offset, off_t filesize, const unsigned char *view,
 			int vis = ELF_ST_VISIBILITY(sym->st_other);
 			char *name = strings + sym->st_name;
 			struct sym *s = sym_htab_lookup_only(name, id);
-			if (bind != STB_LOCAL /*&& !strchr(name, '@')*/) {
+			if (bind != STB_LOCAL && !strchr(name, '@')) {
 				struct ld_plugin_symbol *plugsym = *plugsyms + nplugsyms[0]++;
 				plugsym->name = name;
 				plugsym->def = ldplug_weak(bind, shndx);
