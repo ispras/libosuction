@@ -333,11 +333,6 @@ onload(struct ld_plugin_tv *tv)
 	get_view = u[LDPT_GET_VIEW].tv_get_view;
 	add_symbols = u[LDPT_ADD_SYMBOLS].tv_add_symbols;
 	add_input_file = u[LDPT_ADD_INPUT_FILE].tv_add_input_file;
-	u[LDPT_REGISTER_CLAIM_FILE_HOOK].tv_register_claim_file
-	    (claim_file_handler);
-	u[LDPT_REGISTER_ALL_SYMBOLS_READ_HOOK].tv_register_all_symbols_read
-	    (all_symbols_read_handler);
-	u[LDPT_REGISTER_CLEANUP_HOOK].tv_register_cleanup(cleanup_handler);
 	const char *optstr = u[LDPT_OPTION].tv_string, *linkid, *symfile;
 	if (!optstr)
 		return error("no input file");
@@ -346,6 +341,12 @@ onload(struct ld_plugin_tv *tv)
 	const char *errmsg = read_syms(linkid, symfile);
 	if (errmsg)
 		return error("%s: %s", symfile, errmsg);
+	if (!syms_htab.size) return 0;
+	u[LDPT_REGISTER_CLAIM_FILE_HOOK].tv_register_claim_file
+	    (claim_file_handler);
+	u[LDPT_REGISTER_ALL_SYMBOLS_READ_HOOK].tv_register_all_symbols_read
+	    (all_symbols_read_handler);
+	u[LDPT_REGISTER_CLEANUP_HOOK].tv_register_cleanup(cleanup_handler);
 	return 0;
 }
 _Static_assert(sizeof((ld_plugin_onload){onload}) != 0, "");
