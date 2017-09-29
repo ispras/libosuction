@@ -210,6 +210,8 @@ input(struct dso *dso, FILE *f)
 	for (; y < dso->sym + dso->nsym; y++) {
 		int t;
 		fscanf(f, " %c%c %d %ms", &y->weak, &y->vis, &t, &y->name);
+		char *at = strstr(y->name, "@@");
+		if (at) *at = 0;
 		y->n.kind = N_SYM;
 		if (t >= 0) {
 			y->defscn = &dso->scn[t].n;
