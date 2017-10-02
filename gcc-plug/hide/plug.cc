@@ -162,7 +162,7 @@ pass_hide_globally_invisible::read_vis_changes (void)
   /*  Act conservatively if there can possibly be an alias defined via
       `.symver`; if we localize the symbol such an alias will become local
       as well.  We can't even make it hidden for the same reason.  */
-  if (!symtab->first_asm_symbol ())
+  if (!symtab->asmnodes)
     {
       read_decl_names (f, nloc, loc_nodes);
       read_decl_names (f, nhid, hid_nodes);
