@@ -10,6 +10,7 @@
 #include <sys/mman.h>
 #include <sys/wait.h>
 
+#include <ar.h>
 #include <elf.h>
 
 #include "wrapper-common.h"
@@ -64,6 +65,42 @@ static int get_elfnote_srcid(unsigned char *md5sum, const unsigned char *view)
 	return 1;
 }
 
+static int get_file_srcid(unsigned char *md5sum,
+			  const unsigned char *view,
+			  off_t size)
+{
+	if (!get_elfnote_srcid(md5sum, view))
+		md5_buffer(view, size, md5sum);
+	return 1;
+}
+
+static int get_ar_srcid(unsigned char *md5sum,
+			const unsigned char *view,
+			off_t size)
+{
+	unsigned char md5part[16];
+	const unsigned char *view0 = view;
+	if (size < SARMAG || memcmp(view, ARMAG, SARMAG))
+		return 0;
+	view += SARMAG;
+
+	struct ar_hdr *hdr;
+	long long member_size;
+	memset(md5sum, 0, 16);
+	while (view + sizeof *hdr <= view0 + size) {
+		hdr = (void *)view;
+		view += sizeof *hdr;
+		sscanf(hdr->ar_size, "%lld", &member_size);
+		if (hdr->ar_name[0] != '/') {
+		    get_file_srcid(md5part, view, member_size);
+		    for (int j = 0; j < sizeof md5part; j++)
+			    md5sum[j] ^= md5part[j];
+		}
+		view += member_size + (member_size & 1);
+	}
+	return 1;
+}
+
 static int get_srcid(unsigned char *md5sum, const char *filename)
 {
 	int fd, status = 0;
@@ -75,10 +112,12 @@ static int get_srcid(unsigned char *md5sum, const char *filename)
 	void *view;
 	if ((view = mmap(0, s.st_size, PROT_READ, MAP_SHARED, fd, 0)) == MAP_FAILED)
 		goto done;
-	if (!get_elfnote_srcid(md5sum, view))
-		md5_buffer(view, s.st_size, md5sum);
+	int len = strlen(filename);
+	if (len >= 2 && !strncmp(filename + len - 2, ".a", 2))
+		status = get_ar_srcid(md5sum, view, s.st_size);
+	else
+		status = get_file_srcid(md5sum, view, s.st_size);
 	munmap(view, s.st_size);
-	status = 1;
 done:
 	close(fd);
 	return status;
@@ -92,7 +131,8 @@ static int gen_linkid(char *md5out, int argc, char *argv[])
 		char *arg = argv[i];
 		size_t l = strlen(arg);
 		if (!strcmp(arg, "-o")) { i++; continue; }
-		if (!(l >= 2 && !strcmp(".o", arg + l - 2)
+		if (!(l >= 2 && arg[l - 2] == '.'
+		      && (arg[l - 1] == 'a' || arg[l - 1] == 'o')
 		      || l >= 3 && (!strcmp(".os", arg + l - 3)
 				    || !strcmp(".lo", arg + l - 3))))
 		      continue;
