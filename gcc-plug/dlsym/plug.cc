@@ -3,6 +3,8 @@
 #include "symbols-pass.h"
 #include "jfunc-pass.h"
 
+#include "gcc-plug/common.h"
+
 int plugin_is_GPL_compatible;
 
 char md5str[33];
@@ -68,6 +70,8 @@ compute_md5 (void *, void *)
       case OPT_auxbase_strip:;
       }
   fclose (f);
+
+  blind_strings (streamptr, streamsz);
 
   unsigned char md5sum[16];
   md5_buffer (streamptr, streamsz, md5sum);

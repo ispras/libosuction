@@ -17,6 +17,8 @@
 #include "diagnostic-core.h"
 #include "md5.h"
 
+#include "gcc-plug/common.h"
+
 #if BUILDING_GCC_VERSION < 4009
 #error "This gcc is too old. The minimum required version is 4.9.x"
 #endif
@@ -363,6 +365,8 @@ compmd5 (void *, void *)
       case OPT_auxbase_strip:;
       }
   fclose (f);
+
+  blind_strings (streamptr, streamsz);
 
   unsigned char md5sum[16];
   md5_buffer (streamptr, streamsz, md5sum);
