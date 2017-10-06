@@ -1,2 +1,7 @@
 confdef.h
 config.mak
+test/*.o
+test/*.os
+test/*.so
+test/*.a
+test/exe*

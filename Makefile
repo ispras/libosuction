@@ -38,7 +38,7 @@ check: all install
 	$(MAKE) -C gcc-plug/hide check
 	$(MAKE) -C gcc-plug/dlsym test
 	$(MAKE) -C ld-plug test
-	test/run-all-passes.sh test/build.sh && test/check.sh
+	test/run-all-passes.sh test/run-t.sh && test/run-c.sh
 clean:
 	find . -name '*.o' -o -name '*.so' | xargs -I % rm %
 	rm $(TOOLS)

@@ -1,46 +1,30 @@
 #!/bin/sh -
 
-fail()
-{
-  echo FAILED
-  exit 1
-}
-
-pass()
-{
-  exit 0
-}
-
-cd $(dirname $(realpath $0))
-
 # Unused symbols should not appear in the dump.
 {
     objdump -d libtpriv.so | egrep "unused(foo)"
-} && fail
+} && die
 
 # Uppercase letters in nm output mean global symbol visibility.
 {
     nm libtpriv.so | egrep "(libpriv|static)" | grep -v common | grep [A-Z]
-} && fail
+} && die
 
 # Weak symbols should remain weak.
 {
   nm main2.o | c++filt |
     grep 'MakefileGenerator::foo() const::{lambda()#1}::operator()() const::data' |
       grep " [^wWvVu] "
-} && fail
+} && die
 
 # The executalbe should run and produce the expected return value.
 LD_LIBRARY_PATH=. ./exe1
-[ "$?" != 125 ] && fail
+[ "$?" != 125 ] && die
 
 ./exe3-1
-[ "$?" != 113 ] && fail
+[ "$?" != 113 ] && die
 
 ./exe3-2
-[ "$?" != 113 ] && fail
+[ "$?" != 113 ] && die
 
-./exe5 > /dev/null || fail
-(./exe5 | grep FAIL) && fail
-
-pass
+true
