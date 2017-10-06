@@ -53,6 +53,7 @@ const pass_data pass_data_hide_globally_invisible =
 #if BUILDING_GCC_VERSION >= 5000
 #define _EXECUTE_ARGS function *
 #define fatal_error(...) fatal_error (UNKNOWN_LOCATION, __VA_ARGS__)
+#define asm_nodes symtab->first_asm_symbol ()
 #define add_asm_node(asm_str) symtab->finalize_toplevel_asm (asm_str)
 #define dump_symtab(f) symtab_node::dump_table (f)
 #define cgraph_function_with_gimple_body_p(node) node->has_gimple_body_p ()
@@ -162,7 +163,7 @@ pass_hide_globally_invisible::read_vis_changes (void)
   /*  Act conservatively if there can possibly be an alias defined via
       `.symver`; if we localize the symbol such an alias will become local
       as well.  We can't even make it hidden for the same reason.  */
-  if (!symtab->asmnodes)
+  if (!asm_nodes)
     {
       read_decl_names (f, nloc, loc_nodes);
       read_decl_names (f, nhid, hid_nodes);
