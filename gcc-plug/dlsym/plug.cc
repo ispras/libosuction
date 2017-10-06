@@ -65,6 +65,7 @@ compute_md5 (void *, void *)
       case OPT_dumpbase:;
       case OPT_dumpdir:;
       case OPT_auxbase:;
+      case OPT_auxbase_strip:;
       }
   fclose (f);
 
