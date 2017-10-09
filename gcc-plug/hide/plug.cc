@@ -331,6 +331,10 @@ emit_privplugid_section (void *, void *)
 void
 compmd5 (void *, void *)
 {
+  /* Do not compute md5 hash due to the absense of the body.  */
+  if (in_lto_p)
+    return;
+
   char *streamptr;
   size_t streamsz;
   FILE *f = open_memstream (&streamptr, &streamsz);
