@@ -158,7 +158,7 @@ static void parse_entry_out(int argc, char **argv, char **entry, char **outfile)
 			char **smth = arg[1] == 'o' ? outfile : entry;
 			if (strlen (arg) == 2 && i < argc - 1)
 				*smth = argv[i + 1];
-			else
+			else if (!strchr(arg + 2, '-'))
 				*smth = arg + 2;
 		}
 
