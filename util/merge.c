@@ -188,7 +188,8 @@ input_dyndeps(FILE *f)
 			scn = (char *)s->name;
 		}
 		do {
-			fscanf(f, "%m[^,\n]%c", &sym, &c);
+			if (fscanf(f, "%m[^,\n]%c", &sym, &c) != 2)
+				break;
 			struct sym **symp = sym_htab_lookup(sym), *y = *symp;
 			if (!*symp) {
 				*symp = y = calloc(1, sizeof *y);
