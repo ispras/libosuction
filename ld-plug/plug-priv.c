@@ -17,6 +17,8 @@
 #include <plugin-api.h>
 _Static_assert(LD_PLUGIN_API_VERSION == 1, "unexpected plugin API version");
 
+static const char *linkid_err;
+
 struct obj {
 	char filename[18];
 	struct obj *next;
@@ -111,12 +113,8 @@ read_syms(const char *linkid, const char *file)
 		break;
 	}
 	fclose(f);
-	static char errmsg[] =
-		"could not find linkid \0_23456789abcdef0123456789abcdef";
-	if (!found) {
-		strncpy(errmsg + strlen(errmsg), linkid, 32);
-		return errmsg;
-	}
+	if (!found)
+		linkid_err = linkid;
 	return 0;
 }
 static char *
@@ -167,8 +165,9 @@ ldplug_vis(int elfvis)
 	return (int[]){LDPV_DEFAULT, LDPV_INTERNAL, LDPV_HIDDEN, LDPV_PROTECTED}[elfvis];
 }
 static const char *
-process_elf(int fd, off_t offset, off_t filesize, const unsigned char *view,
-	    int *nplugsyms, struct ld_plugin_symbol **plugsyms, int *claim)
+process_elf(const char *filename, int fd, off_t offset, off_t filesize,
+	    const unsigned char *view, int *nplugsyms,
+	    struct ld_plugin_symbol **plugsyms, int *claim)
 {
 	const ElfNN_(Ehdr) *ehdr = (void *)view;
 	typedef ElfNN_(Shdr) Shdr;
@@ -201,6 +200,11 @@ process_elf(int fd, off_t offset, off_t filesize, const unsigned char *view,
 			break;
 	}
 	if (!srcid) srcid = plug_gen_srcid((char[33]){}, view, filesize);
+	if (linkid_err) {
+		fprintf(stderr, "srcid[%s@%lld] = %s\n", filename,
+			(long long)offset, srcid);
+		return 0;
+	}
 	unsigned id[4];
 	sscanf(srcid, "%8x%8x%8x%8x", id+0, id+1, id+2, id+3);
 	int clonefd = -1;
@@ -291,8 +295,8 @@ claim_file_handler(const struct ld_plugin_input_file *file, int *claimed)
 
 	*claimed = 0;
 	const char *errmsg
-	    = process_elf(file->fd, file->offset, file->filesize, view,
-			  &nplugsyms, &plugsyms, claimed);
+		= process_elf(filename, file->fd, file->offset, file->filesize,
+			      view, &nplugsyms, &plugsyms, claimed);
 	if (errmsg)
 		return error("%s: %s", filename, errmsg);
 	if (*claimed)
@@ -306,6 +310,8 @@ claim_file_handler(const struct ld_plugin_input_file *file, int *claimed)
 static enum ld_plugin_status
 all_symbols_read_handler(void)
 {
+	if (linkid_err)
+		return error("could not find linkid %s", linkid_err);
 	struct obj *prev = 0;
 	for (struct obj *next, *o = objs; o; o = next)
 		next = o->next, o->next = prev, prev = o;
@@ -349,7 +355,7 @@ onload(struct ld_plugin_tv *tv)
 	const char *errmsg = read_syms(linkid, symfile);
 	if (errmsg)
 		return error("%s: %s", symfile, errmsg);
-	if (!syms_htab.size) return 0;
+	if (!syms_htab.size && !linkid_err) return 0;
 	u[LDPT_REGISTER_CLAIM_FILE_HOOK].tv_register_claim_file
 	    (claim_file_handler);
 	u[LDPT_REGISTER_ALL_SYMBOLS_READ_HOOK].tv_register_all_symbols_read
