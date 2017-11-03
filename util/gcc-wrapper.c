@@ -71,5 +71,5 @@ int main(int argc, char *argv[])
 #endif
 	newargv[newargc++] = 0;
 	execv(origcmd, (char **)newargv);
-	die("execve: %s\n", strerror(errno));
+	die("gcc-wrapper: failed to execv %s: %s\n", origcmd, strerror(errno));
 }

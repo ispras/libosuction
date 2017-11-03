@@ -382,7 +382,7 @@ exec:;
 		unlink(tmpfile);
 	} else {
 		execv(origcmd, newargv);
-		die("execve: %s\n", strerror(errno));
+		die("ld-wrapper: failed to execv %s: %s\n", origcmd, strerror(errno));
 	}
 	return 0;
 }
