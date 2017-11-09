@@ -1,15 +1,16 @@
-__GI___libc_dlsym 1
 DSO_bind_func 1
 DSO_bind_var 1
 DSO_global_lookup 0
 PR_FindFunctionSymbol 1
-PR_FindFunctionSymbolAndLibrary 1
+PR_FindFunctionSymbolAndLibrary 0
 PR_FindSymbol 1
-PR_FindSymbolAndLibrary 1
+PR_FindSymbolAndLibrary 0
 _Jv_FindSymbolInExecutable 0
+_ZL25uplug_initPlugFromLibraryPKcS0_S0_P10UErrorCode.part.6 1
 _ZN14__interception14GetFuncAddrVerEPKcS1_ 0
 _ZN14__interception22GetRealFunctionAddressEPKcPmmm 0
 _ZN6__asan13AsanDlSymNextEPKc 0
+__GI___libc_dlsym 1
 __dlsym 1
 __dlvsym 1
 __libc_dlsym 1
@@ -39,6 +40,7 @@ ll_sym 2
 lt_dlsym 1
 pa_load_sym 2
 pr_FindSymbolInLib 1
+pr_FindSymbolInLib.isra.1 2
 pr_FindSymbolInProg 0
 rbuVfsDlSym 2
 sqlcipher3LoadExtension 2
@@ -52,6 +54,7 @@ tncs_get_sym 1
 unixDlSym 2
 uplug_initPlugFromLibrary 1
 uplug_loadPlugFromLibrary 1
-uprv_dlsym_func_57 1
+uprv_dlsym_func 1
 xmlModulePlatformSymbol 1
 xmlModuleSymbol 1
+xmlModuleSymbol__internal_alias 1
