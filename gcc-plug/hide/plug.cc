@@ -178,6 +178,7 @@ void
 pass_hide_globally_invisible::do_localize_node (symtab_node *node)
 {
   make_decl_local (node);
+  TREE_USED (node->decl) = 1;
 
   /* This code does the right thing but looks useless since control never
      reaches inside the if.  Theoretical use-cases are
