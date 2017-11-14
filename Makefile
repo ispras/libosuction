@@ -24,15 +24,14 @@ LD_WRAP = $(addprefix util/, wrapper-1 wrapper-2)
 
 WRAPPERS = $(GCC_WRAP) $(LD_WRAP)
 TOOLS = $(WRAPPERS) $(DAEMON) $(MERGE) $(JF2SIGN)
-RT_AUX = util/srcid.o
-ALL = $(LD_PLUG_LIBS) $(GCC_PLUG_LIBS) $(TOOLS) $(RT_AUX)
+LD_RT_AUX = util/srcid.o util/dummy.o
+ALL = $(LD_PLUG_LIBS) $(GCC_PLUG_LIBS) $(TOOLS) $(LD_RT_AUX)
 
 all: $(ALL)
 install: all
 	cp $(GCC_PLUG_LIBS) $(plugdir)
 	mkdir -p $(plugdir)/ld && cp $(LD_PLUG_LIBS) $(plugdir)/ld
-	cp $(RT_AUX) $(plugdir)
-	cp $(RT_AUX) $(plugdir)/ld/dummy.o
+	cp $(LD_RT_AUX) $(plugdir)/ld/
 export
 check: all install
 	$(MAKE) -C gcc-plug/hide check

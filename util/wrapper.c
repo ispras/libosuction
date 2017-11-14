@@ -21,12 +21,11 @@
 #define PLUGIN (PLUGDIR "ld/libplug.so")
 #define PLUGIN_PRIV (PLUGDIR "ld/libplug-priv.so")
 #define DUMMY_OBJ (PLUGDIR "ld/dummy.o")
+#define SRCID_FILE (PLUGDIR "ld/srcid.o")
 
 #if (!(GCC_RUN == 1 || GCC_RUN == 2))
 #error "Compile ld wrapper with -DGCC_RUN={1,2}"
 #endif
-
-#define SRCID_FILE PLUGDIR "srcid.o"
 
 static int get_elfnote_srcid(unsigned char *md5sum, const unsigned char *view)
 {
