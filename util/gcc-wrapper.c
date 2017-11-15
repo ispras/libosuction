@@ -23,10 +23,8 @@
 
 static const char *maybe_strip_lto(const char *opt)
 {
-#if GCC_RUN <= 1
 	if (!strcmp(opt, "-flto") || !strncmp(opt, "-flto=", strlen("-flto=")))
 		return "-fno-lto";
-#endif
 	return opt;
 }
 
