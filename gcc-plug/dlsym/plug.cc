@@ -132,9 +132,10 @@ plugin_finalize (void *, void *)
     {
       if (jf_out_fd)
 	{
-	  FILE *output = fdopen (atoi (jf_out_fd), "a");
+	  int fd = atoi (jf_out_fd);
+	  FILE *output = fdopen (fd, "a");
 	  if (!output)
-	    fatal_error (xstrerror (errno));
+	    fatal_error ("cannot open fd %d: %s", fd, xstrerror (errno));
 
 	  write_jfunctions (output, &jfuncs);
 
@@ -147,9 +148,10 @@ plugin_finalize (void *, void *)
     {
       if (sym_out_fd)
 	{
-	  FILE *output = fdopen (atoi (sym_out_fd), "w");
+	  int fd = atoi (sym_out_fd);
+	  FILE *output = fdopen (fd, "w");
 	  if (!output)
-	    fatal_error (xstrerror (errno));
+	    fatal_error ("cannot open fd %d: %s", fd, xstrerror (errno));
 
 	  write_dynamic_symbol_calls (output, &resolve_contexts);
 
@@ -202,7 +204,7 @@ parse_argument (plugin_argument *arg)
       FILE *input = fopen (arg_value, "r");
 
       if (!input)
-	fatal_error (xstrerror (errno));
+	fatal_error ("cannot open %s: %s", arg_value, xstrerror (errno));
 
       while (fscanf (input, "%ms %d", &wname, &spos) != EOF)
 	{
