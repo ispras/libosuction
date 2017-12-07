@@ -284,7 +284,7 @@ ok:;
 		}
 
 	/* Can't set --gc-sections with -r (without specifying a single root). */
-	if (incremental_p && GCC_RUN == 2) {
+	if (incremental_p && (GCC_RUN == 2 || GCC_RUN == 1)) {
 		newargv = argv;
 		goto exec;
 	}
@@ -298,6 +298,9 @@ ok:;
 #if GCC_RUN == 1
 	int sockfd = daemon_connect(argc, argv, "Linker"[0]);
 	snprintf(optstr + 32, sizeof optstr - 32, ":%s:%d", entry, sockfd);
+	// Ignore for glibc
+	if (access("/home/abuild/rpmbuild/SOURCES/linaro-glibc.spec", F_OK))
+		newargv[argc++] = "--gc-sections";
 	newargv[argc++] = "--plugin";
 	newargv[argc++] = PLUGIN;
 	newargv[argc++] = "--plugin-opt";
