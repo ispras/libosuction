@@ -27,6 +27,8 @@
 #error "Compile ld wrapper with -DGCC_RUN={1,2}"
 #endif
 
+extern char** environ;
+
 static int get_elfnote_srcid(unsigned char *md5sum, const unsigned char *view)
 {
 	const ElfNN_(Ehdr) *ehdr = (void *)view;
@@ -180,7 +182,7 @@ void exec_child(char *cmd, char **argv)
 	if (cpid == -1)
 		die("ld-wrapper: fork: %s\n", strerror(errno));
 	if (cpid == 0) {
-		execv(cmd, argv);
+		execve(cmd, argv, environ);
 		die("ld-wrapper: execve: %s\n", strerror(errno));
 	}
 	int status;
@@ -189,6 +191,59 @@ void exec_child(char *cmd, char **argv)
 		die("ld-wrapper: waitpid: %s\n", strerror(errno));
 	if (!WIFEXITED(status))
 		die("ld-wrapper: child terminated abnormally");
+}
+
+static void
+create_hid_file (const char *linkid, const char *input, const char *output)
+{
+	FILE *in = fopen(input, "r");
+
+	if (!in)
+		die("Could not open input file");
+
+	int nelim, nloc, nhid;
+	char id[33];
+	int found = 0;
+	while (fscanf(in, "%d %d %d %32s", &nelim, &nloc, &nhid, id) == 4) {
+		if (strncmp(id, linkid, 32)) {
+			for (int i = 0; i < nelim + nloc + nhid; i++)
+				fscanf(in, " %*[^\n]");
+			continue;
+		}
+		found = 1;
+
+		FILE *out = fopen(output, "w");
+		if (!out)
+			die("Could not open output file");
+
+		fprintf(out, ".section .note.GNU-stack,\"\",%%progbits\n");
+		fprintf(out, ".section .__privplug_refs,\"e\",%%progbits\n");
+
+		for (int i = 0; i < nelim + nloc + nhid; i++) {
+			const char *name;
+			fscanf(in, " %*[^:]:%*[0-9a-f]:%*d:%ms", &name);
+
+			char *ver;
+			if ((ver = strchr(name, '@'))) {
+				*ver = '_';
+				fprintf(out, ".dc.a __privplug_%s\n", name);
+				fprintf(out, ".hidden __privplug_%s\n", name);
+				fprintf(out, ".symver __privplug_%s,", name);
+				*ver = '@';
+				fprintf(out, "%s\n", name);
+			} else {
+				fprintf(out, ".hidden %s\n", name);
+			}
+		}
+
+		fclose(out);
+		break;
+	}
+
+	if (!found)
+		die("Could not find linkid %32s\n", linkid);
+
+	fclose(in);
 }
 
 int main(int argc, char *argv[])
@@ -235,6 +290,9 @@ ok:;
 	}
 
 	newargv[0] = argv[0];
+	/* GCC_RUN=0 does not use ld wrapper
+	   GCC_RUN=1 normally copies argv into newargv except the exe name
+	   GCC_RUN=2 reserves the slot for our obj file */
 	memcpy(newargv + GCC_RUN, argv + 1, (argc - 1) * sizeof *argv);
 
 #if GCC_RUN == 1
@@ -242,16 +300,27 @@ ok:;
 	snprintf(optstr + 32, sizeof optstr - 32, ":%s:%d", entry, sockfd);
 	newargv[argc++] = "--plugin";
 	newargv[argc++] = PLUGIN;
-#else
-	newargv[1] = DUMMY_OBJ;
-	argc++;
-	newargv[argc++] = "--gc-sections";
-	newargv[argc++] = "--plugin";
-	newargv[argc++] = PLUGIN_PRIV;
-	snprintf(optstr + 32, sizeof optstr - 32, ":%s", MERGED_PRIVDATA);
-#endif
 	newargv[argc++] = "--plugin-opt";
 	newargv[argc++] = optstr;
+#else
+	char asm_file[64] = "/tmp/";
+	strncat(asm_file, optstr, 32);
+	strcat(asm_file, ".s");
+
+	char obj_file[64] = "/tmp/";
+	strncat(obj_file, optstr, 32);
+	strcat(obj_file, ".o");
+
+	create_hid_file(optstr, MERGED_PRIVDATA, asm_file);
+
+	char *gcc_argv[] = { "gcc", "-c", asm_file, "-o", obj_file, NULL };
+	exec_child("/usr/bin/gcc", gcc_argv);
+
+	newargv[1] = obj_file;
+	// Due to reserving first arg, actual argc is incremented
+	argc++;
+	newargv[argc++] = "--gc-sections";
+#endif
 	newargv[argc++] = 0;
 exec:;
 	if (incremental_p) {
