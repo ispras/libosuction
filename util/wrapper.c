@@ -197,9 +197,14 @@ static void
 create_hid_file (const char *linkid, const char *input, const char *output)
 {
 	FILE *in = fopen(input, "r");
-
 	if (!in)
 		die("Could not open input file");
+
+	FILE *out = fopen(output, "w");
+	if (!out)
+		die("Could not open output file");
+	fprintf(out, ".section .note.GNU-stack,\"\",%%progbits\n");
+	fprintf(out, ".section .__privplug_refs,\"e\",%%progbits\n");
 
 	int nelim, nloc, nhid;
 	char id[33];
@@ -211,13 +216,6 @@ create_hid_file (const char *linkid, const char *input, const char *output)
 			continue;
 		}
 		found = 1;
-
-		FILE *out = fopen(output, "w");
-		if (!out)
-			die("Could not open output file");
-
-		fprintf(out, ".section .note.GNU-stack,\"\",%%progbits\n");
-		fprintf(out, ".section .__privplug_refs,\"e\",%%progbits\n");
 
 		for (int i = 0; i < nelim + nloc + nhid; i++) {
 			const char *name;
@@ -236,14 +234,14 @@ create_hid_file (const char *linkid, const char *input, const char *output)
 			}
 		}
 
-		fclose(out);
 		break;
 	}
 
-	if (!found)
-		die("Could not find linkid %32s\n", linkid);
+//	if (!found)
+//		die("Could not find linkid %.32s\n", linkid);
 
 	fclose(in);
+	fclose(out);
 }
 
 int main(int argc, char *argv[])
@@ -303,8 +301,6 @@ ok:;
 		newargv[argc++] = "--gc-sections";
 	newargv[argc++] = "--plugin";
 	newargv[argc++] = PLUGIN;
-	newargv[argc++] = "--plugin-opt";
-	newargv[argc++] = optstr;
 #else
 	char asm_file[64] = "/tmp/";
 	strncat(asm_file, optstr, 32);
@@ -323,7 +319,12 @@ ok:;
 	// Due to reserving first arg, actual argc is incremented
 	argc++;
 	newargv[argc++] = "--gc-sections";
+	newargv[argc++] = "--plugin";
+	newargv[argc++] = PLUGIN_PRIV;
+	snprintf(optstr + 32, sizeof optstr - 32, ":%s", MERGED_PRIVDATA);
 #endif
+	newargv[argc++] = "--plugin-opt";
+	newargv[argc++] = optstr;
 	newargv[argc++] = 0;
 exec:;
 	if (incremental_p) {

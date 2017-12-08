@@ -205,6 +205,7 @@ process_elf(const char *filename, int fd, off_t offset, off_t filesize,
 			(long long)offset, srcid);
 		return 0;
 	}
+	return 0;
 	unsigned id[4];
 	sscanf(srcid, "%8x%8x%8x%8x", id+0, id+1, id+2, id+3);
 	int clonefd = -1;
