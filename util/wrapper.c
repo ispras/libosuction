@@ -191,14 +191,15 @@ void exec_child(char *cmd, char **argv)
 		die("ld-wrapper: child terminated abnormally");
 }
 
+#if GCC_RUN == 2
 static void
-create_hid_file (const char *linkid, const char *input, const char *output)
+create_hid_file (const char *linkid, const char *input, int outputfd)
 {
 	FILE *in = fopen(input, "r");
 	if (!in)
 		die("Could not open input file");
 
-	FILE *out = fopen(output, "w");
+	FILE *out = fdopen(outputfd, "w");
 	if (!out)
 		die("Could not open output file");
 	fprintf(out, ".section .note.GNU-stack,\"\",%%progbits\n");
@@ -206,14 +207,12 @@ create_hid_file (const char *linkid, const char *input, const char *output)
 
 	int nelim, nloc, nhid;
 	char id[33];
-	int found = 0;
 	while (fscanf(in, "%d %d %d %32s", &nelim, &nloc, &nhid, id) == 4) {
 		if (strncmp(id, linkid, 32)) {
 			for (int i = 0; i < nelim + nloc + nhid; i++)
 				fscanf(in, " %*[^\n]");
 			continue;
 		}
-		found = 1;
 
 		for (int i = 0; i < nelim + nloc + nhid; i++) {
 			const char *name;
@@ -232,15 +231,39 @@ create_hid_file (const char *linkid, const char *input, const char *output)
 			}
 		}
 
-		break;
+		goto done;
 	}
 
-//	if (!found)
-//		die("Could not find linkid %.32s\n", linkid);
+	// die("Could not find linkid %.32s\n", linkid);
 
+done:
 	fclose(in);
 	fclose(out);
 }
+
+static char *
+hid_file(const char *linkid)
+{
+	static char tmpl[] = "/tmp/\0_23456789abcdef0123456789abcdef-XXXXXX.o";
+	memcpy(tmpl + strlen(tmpl), linkid, 32);
+	int objfd = mkstemps(tmpl, 2);
+	if (objfd < 0) return 0;
+	unlink(tmpl);
+	memcpy(strchr(tmpl, '-') + 1, "XXXXXX", 6);
+	tmpl[sizeof tmpl - 2] = 's';
+	int asmfd = mkstemps(tmpl, 2);
+	if (asmfd < 0) return 0;
+	static char objname[] = "/proc/self/fd/\0_23456789";
+	snprintf(objname + strlen(objname), 11, "%u", 0u+objfd);
+
+	create_hid_file(linkid, MERGED_PRIVDATA, asmfd);
+
+	char *gcc_argv[] = {"gcc", "-c", tmpl, "-o", objname, 0};
+	exec_child("/usr/bin/gcc", gcc_argv);
+	unlink(tmpl);
+	return objname;
+}
+#endif
 
 int main(int argc, char *argv[])
 {
@@ -300,20 +323,8 @@ ok:;
 	newargv[argc++] = "--plugin";
 	newargv[argc++] = PLUGIN;
 #else
-	char asm_file[64] = "/tmp/";
-	strncat(asm_file, optstr, 32);
-	strcat(asm_file, ".s");
-
-	char obj_file[64] = "/tmp/";
-	strncat(obj_file, optstr, 32);
-	strcat(obj_file, ".o");
-
-	create_hid_file(optstr, MERGED_PRIVDATA, asm_file);
-
-	char *gcc_argv[] = { "gcc", "-c", asm_file, "-o", obj_file, NULL };
-	exec_child("/usr/bin/gcc", gcc_argv);
-
-	newargv[1] = obj_file;
+	if (!(newargv[1] = hid_file(optstr)))
+		die("failure creating aux input file");
 	// Due to reserving first arg, actual argc is incremented
 	argc++;
 	newargv[argc++] = "--gc-sections";
