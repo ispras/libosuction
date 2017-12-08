@@ -27,8 +27,6 @@
 #error "Compile ld wrapper with -DGCC_RUN={1,2}"
 #endif
 
-extern char** environ;
-
 static int get_elfnote_srcid(unsigned char *md5sum, const unsigned char *view)
 {
 	const ElfNN_(Ehdr) *ehdr = (void *)view;
@@ -182,7 +180,7 @@ void exec_child(char *cmd, char **argv)
 	if (cpid == -1)
 		die("ld-wrapper: fork: %s\n", strerror(errno));
 	if (cpid == 0) {
-		execve(cmd, argv, environ);
+		execv(cmd, argv);
 		die("ld-wrapper: execve: %s\n", strerror(errno));
 	}
 	int status;
