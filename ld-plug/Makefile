@@ -1,6 +1,8 @@
 TEST-OBJ =  test1a.o test1b.o
 PLUGIN-DEPS = libplug.so
 
+$(TEST-OBJ): CFLAGS += -fpic
+
 test: libtest1.so
 
 libtest1.so: $(TEST-OBJ) $(PLUGIN-DEPS)
