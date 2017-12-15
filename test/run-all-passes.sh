@@ -54,7 +54,7 @@ build() {
   cd - > /dev/null
   stdcxx_path=$(dirname $($gxx -print-file-name=libstdc++.so))
 
-  CC=$gcc CXX=$gxx \
+  CC="$gcc -B$lddir" CXX="$gxx -B$lddir" \
   PATH="$lddir:$PATH" \
   LD_LIBRARY_PATH="$stdcxx_path:$LD_LIBRARY_PATH" \
     $bldcmd || die "Build pass $pass failed."
