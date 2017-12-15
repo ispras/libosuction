@@ -358,7 +358,7 @@ exec:;
 		close(tmpfd);
 
 		char *ld_r_argv[] = { origcmd,
-				      "--relocatable", outfile, SRCID_FILE,
+				      "-r", outfile, SRCID_FILE,
 				      "-o", tmpfile, NULL };
 		exec_child(origcmd, ld_r_argv);
 
