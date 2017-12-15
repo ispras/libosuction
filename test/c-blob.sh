@@ -7,7 +7,7 @@
 
 # Uppercase letters in nm output mean global symbol visibility.
 {
-    nm libtpriv.so | egrep "(libpriv|static)" | grep -v common | grep [A-Z]
+    nm -D libtpriv.so | egrep "(libpriv|static)" | grep -v common | grep [A-Z]
 } && die
 
 # Weak symbols should remain weak.
