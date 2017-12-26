@@ -221,12 +221,13 @@ create_hid_file (const char *linkid, const char *input, int outputfd)
 			char *ver;
 			if ((ver = strchr(name, '@'))) {
 				*ver = '_';
-				fprintf(out, ".dc.a __privplug_%s\n", name);
+				fprintf(out, ".int __privplug_%s - .\n", name);
 				fprintf(out, ".hidden __privplug_%s\n", name);
 				fprintf(out, ".symver __privplug_%s,", name);
 				*ver = '@';
 				fprintf(out, "%s\n", name);
 			} else {
+				fprintf(out, ".int %s - .\n", name);
 				fprintf(out, ".hidden %s\n", name);
 			}
 		}
