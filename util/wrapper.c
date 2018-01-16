@@ -216,19 +216,20 @@ create_hid_file (const char *linkid, const char *input, int outputfd)
 
 		for (int i = 0; i < nelim + nloc + nhid; i++) {
 			const char *name;
-			fscanf(in, " %*[^:]:%*[0-9a-f]:%*d:%ms", &name);
+			char tls;
+			fscanf(in, " %*[^:]:%*[0-9a-f]:%*d:%c:%ms", &tls, &name);
 
-			char *ver;
-			if ((ver = strchr(name, '@'))) {
-				*ver = '_';
-				fprintf(out, ".int __privplug_%s - .\n", name);
-				fprintf(out, ".hidden __privplug_%s\n", name);
-				fprintf(out, ".symver __privplug_%s,", name);
+			char *ver = strchr(name, '@');
+			const char *pfx = ver ? "__privplug_" : "";
+			if (ver) *ver = '_';
+			fprintf(out, ".int %s%s-.\n", pfx, name);
+			fprintf(out, ".hidden %s%s\n", pfx, name);
+			if (tls == 'T')
+				fprintf(out, ".type %s%s STT_TLS\n", pfx, name);
+			if (ver) {
+				fprintf(out, ".symver %s%s,", pfx, name);
 				*ver = '@';
 				fprintf(out, "%s\n", name);
-			} else {
-				fprintf(out, ".int %s - .\n", name);
-				fprintf(out, ".hidden %s\n", name);
 			}
 		}
 

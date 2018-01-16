@@ -37,6 +37,7 @@ static struct {
 				struct rel *firstrel;
 				enum {W_STRONG, W_COMMON, W_WEAK, W_UNDEF} weak;
 				enum {V_DEFAULT, V_PROTECTED, V_HIDDEN} vis;
+				int tls;
 			} anchorsym;
 			struct rel {
 				struct section *section;
@@ -232,8 +233,8 @@ dg_print(FILE *f)
 		for (struct sym *s = o->syms; s < o->syms + o->nsyms; s++) {
 			if (!s->name)
 				continue;
-			fprintf(f, "%c%c %d\t%s\n",
-			       "DCWU"[s->weak], "dph"[s->vis],
+			fprintf(f, "%c%c%c %d\t%s\n",
+			       "DCWU"[s->weak], "dph"[s->vis], "_T"[s->tls],
 			       s->section ? s->section->uid : -1, s->name);
 			struct objfile *thiso = s->section ? s->section->object : 0;
 			int ndeps = 0;
@@ -459,6 +460,7 @@ process_elf(const char *filename, off_t offset, off_t filesize,
 			if (shndx == SHN_COMMON || shndx == SHN_ABS) shndx = 0;
 			ssym.section = shndx ? dg_section(shndx) : 0;
 			ssym.vis = sym_vis(ELF_ST_VISIBILITY(sym->st_other));
+			ssym.tls = ELF_ST_TYPE(sym->st_info) == STT_TLS;
 
 			if (bind == STB_LOCAL) {
 				symptrs[j] = ssym.section ? &ssym.section->anchorsym : 0;

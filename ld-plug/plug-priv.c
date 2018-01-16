@@ -101,7 +101,7 @@ read_syms(const char *linkid, const char *file)
 		sym_htab_alloc(nelim + nloc + nhid);
 		for (int i = 0; i < nelim + nloc + nhid; i++) {
 			struct sym s;
-			fscanf(f, " %*[^:]:%32[0-9a-f]:%*d:%ms", id, &s.name);
+			fscanf(f, " %*[^:]:%32[0-9a-f]:%*d:%*c:%ms", id, &s.name);
 			unsigned *t = s.srcid;
 			sscanf(id, "%8x%8x%8x%8x", t+0, t+1, t+2, t+3);
 			struct sym **symp = sym_htab_lookup(s.name, s.srcid);

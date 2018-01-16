@@ -19,12 +19,14 @@
 #define ElfNN_(t) Elf64_##t
 #define ELFCLASS ELFCLASS64
 #define ELF_ST_BIND(st_info)        ELF64_ST_BIND(st_info)
+#define ELF_ST_TYPE(st_info)        ELF64_ST_TYPE(st_info)
 #define ELF_ST_VISIBILITY(st_other) ELF64_ST_VISIBILITY(st_other)
 #define ELF_R_SYM(r_info)           ELF64_R_SYM(r_info)
 #elif PLUG_TARGET_ELFCLASS == 32
 #define ElfNN_(t) Elf32_##t
 #define ELFCLASS ELFCLASS32
 #define ELF_ST_BIND(st_info)        ELF32_ST_BIND(st_info)
+#define ELF_ST_TYPE(st_info)        ELF32_ST_TYPE(st_info)
 #define ELF_ST_VISIBILITY(st_other) ELF32_ST_VISIBILITY(st_other)
 #define ELF_R_SYM(r_info)           ELF32_R_SYM(r_info)
 #endif

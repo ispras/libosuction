@@ -48,6 +48,7 @@ struct dso {
 		struct node n;
 		char weak;
 		char vis;
+		char tls;
 		int nrevdeps;
 		const char *name;
 		struct node *defscn;
@@ -274,7 +275,7 @@ input(struct dso *dso, FILE *f)
 	struct sym *y = dso->sym = calloc(dso->nsym, sizeof *dso->sym);
 	for (; y < dso->sym + dso->nsym; y++) {
 		int t;
-		fscanf(f, " %c%c %d %ms", &y->weak, &y->vis, &t, &y->name);
+		fscanf(f, " %c%c%c %d %ms", &y->weak, &y->vis, &y->tls, &t, &y->name);
 		char *at = strstr(y->name, "@@");
 		if (at) *at = 0;
 		y->n.kind = N_SYM;
@@ -476,7 +477,9 @@ static void printsym(struct sym *sym)
 	struct obj *o = ((struct scn *)n)->objptr, *osrcid = o->srcidmain;
 	const char *t, *objname = o->path;
 	if ((t = strrchr(objname, '/'))) objname = t+1;
-	printf("%s:%s:%d:%s\n", objname, o->srcid, osrcid->srcidcnt, sym->name);
+	char tls = sym->tls == 'T' ? 'T' : '_';
+	printf("%s:%s:%d:%c:%s\n",
+	       objname, o->srcid, osrcid->srcidcnt, tls, sym->name);
 }
 static void mark(struct dso *dsos, int n)
 {
