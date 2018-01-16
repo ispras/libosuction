@@ -32,9 +32,9 @@ BEGIN {
 # libQt5UiTools.a:2aaa1fa352bffe51e178b14dbf40e55f:6:_ZTIN13QFormI
 
 {
-  arr[$2, $4, state]++
-  all[$2, $4] = $3
-  obj[$2, $4] = $1  # mkpriv gcc plugin does not care about this field
+  arr[$2, $5, state]++
+  all[$2, $5] = $3
+  obj[$2, $5] = $1  # mkpriv gcc plugin does not care about this field
 }
 
 END {
