@@ -493,7 +493,7 @@ static void mark(struct dso *dsos, int n)
 	for (struct dso *dso = dsos; dso < dsos + n; dso++) {
 		if (dso->is_dso == 'R')
 			continue;
-		struct sym *elimstack = 0, *locstack = 0, *hidstack = 0;
+		struct sym *elims = 0, *locs = 0, *hids = 0;
 		int nelim = 0, nloc = 0, nhid = 0;
 		for (struct sym *y = dso->sym; y < dso->sym + dso->nsym; y++) {
 			if (y->weak == 'U') continue;
@@ -501,30 +501,30 @@ static void mark(struct dso *dsos, int n)
 			if (!y->n.preorderidx) {
 				if (!y->defscn->preorderidx) {
 					nelim++;
-					y->n.stacknext = &elimstack->n;
-					elimstack = y;
+					y->n.stacknext = &elims->n;
+					elims = y;
 				} else {
 					nloc++;
-					y->n.stacknext = &locstack->n;
-					locstack = y;
+					y->n.stacknext = &locs->n;
+					locs = y;
 				}
 			} else if (y->vis != 'h') {
 				struct sym *u = sym_htab_lookup_only(y->name);
 				if (!u || !u->n.preorderidx) {
 					nhid++;
-					y->n.stacknext = &hidstack->n;
-					hidstack = y;
+					y->n.stacknext = &hids->n;
+					hids = y;
 				}
 			}
 		}
 		printf("%d %d %d %s\n", nelim, nloc, nhid, dso->linkid);
-		for (struct sym *y = elimstack; y; y = (void*)y->n.stacknext)
+		for (struct sym *y = elims; y; y = (void*)y->n.stacknext)
 			printsym(y);
 		puts("");
-		for (struct sym *y = locstack; y; y = (void*)y->n.stacknext)
+		for (struct sym *y = locs; y; y = (void*)y->n.stacknext)
 			printsym(y);
 		puts("");
-		for (struct sym *y = hidstack; y; y = (void*)y->n.stacknext)
+		for (struct sym *y = hids; y; y = (void*)y->n.stacknext)
 			printsym(y);
 		puts("");
 	}
