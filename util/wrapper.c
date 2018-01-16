@@ -285,7 +285,7 @@ ok:;
 	char origcmd[7 + sizeof ALTDIR] = ALTDIR;
 	strcpy(origcmd + sizeof ALTDIR - 1, name);
 
-	char *storage[argc + 7];
+	char *storage[argc + 8];
 	char **newargv = storage;
 
 	bool incremental_p = false;
@@ -324,6 +324,12 @@ ok:;
 	newargv[argc++] = "--plugin";
 	newargv[argc++] = PLUGIN;
 #else
+	// TODO: The correct way is to place the aux file last on the linker's
+	// command line, since undefined references in the aux file at the
+	// beginning may affect extraction of object files from archives.
+	// But it is not enough for ld.gold, since it erroneously picks up the
+	// first visibility status it sees for a symbol and ignores the rest --
+	// i.e. our .hidden directives.
 	if (!(newargv[1] = hid_file(optstr)))
 		die("failure creating aux input file");
 	// Due to reserving first arg, actual argc is incremented
@@ -331,6 +337,7 @@ ok:;
 	newargv[argc++] = "--gc-sections";
 	newargv[argc++] = "--plugin";
 	newargv[argc++] = PLUGIN_PRIV;
+	newargv[argc++] = newargv[1];
 	snprintf(optstr + 32, sizeof optstr - 32, ":%s", MERGED_PRIVDATA);
 #endif
 	newargv[argc++] = "--plugin-opt";
