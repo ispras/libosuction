@@ -129,6 +129,7 @@ static int gen_linkid(char *md5out, int argc, char *argv[])
 	for (int i = 1; i < argc; i++) {
 		char *arg = argv[i];
 		size_t l = strlen(arg);
+		if (!strcmp(arg, "-lgcc_eh")) md5all[15] += 42;
 		if (!strcmp(arg, "-o")) { i++; continue; }
 		if (!(l >= 2 && arg[l - 2] == '.'
 		      && (arg[l - 1] == 'a' || arg[l - 1] == 'o')
