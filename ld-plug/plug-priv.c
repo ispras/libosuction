@@ -89,12 +89,13 @@ read_syms(const char *linkid, const char *file)
 	FILE *f = fopen(file, "r");
 	if (!f)
 		return "error opening file";
-	int nelim, nloc, nhid;
+	int nelim, nloc, nhid, nund;
 	char id[33];
 	int found = 0;
-	while (fscanf(f, "%d %d %d %32s", &nelim, &nloc, &nhid, id) == 4) {
+	while (fscanf(f, "%d %d %d %d %32s", &nelim, &nloc, &nhid, &nund, id)
+	       == 5) {
 		if (strcmp(id, linkid)) {
-			for (int i = 0; i < nelim + nloc + nhid; i++)
+			for (int i = 0; i < nelim + nloc + nhid + nund; i++)
 				fscanf(f, " %*[^\n]");
 			continue;
 		}

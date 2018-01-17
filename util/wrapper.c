@@ -206,16 +206,17 @@ create_hid_file (const char *linkid, const char *input, int outputfd)
 	fprintf(out, ".section .note.GNU-stack,\"\",%%progbits\n");
 	fprintf(out, ".section .__privplug_refs,\"e\",%%progbits\n");
 
-	int nelim, nloc, nhid;
+	int nelim, nloc, nhid, nund;
 	char id[33];
-	while (fscanf(in, "%d %d %d %32s", &nelim, &nloc, &nhid, id) == 4) {
+	while (fscanf(in, "%d %d %d %d %32s", &nelim, &nloc, &nhid, &nund, id)
+	       == 5) {
 		if (strncmp(id, linkid, 32)) {
-			for (int i = 0; i < nelim + nloc + nhid; i++)
+			for (int i = 0; i < nelim + nloc + nhid + nund; i++)
 				fscanf(in, " %*[^\n]");
 			continue;
 		}
 
-		for (int i = 0; i < nelim + nloc + nhid; i++) {
+		for (int i = 0; i < nelim + nloc + nhid + nund; i++) {
 			const char *name;
 			char tls;
 			fscanf(in, " %*[^:]:%*[0-9a-f]:%*d:%c:%ms", &tls, &name);

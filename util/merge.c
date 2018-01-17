@@ -481,6 +481,11 @@ static void printsym(struct sym *sym)
 	printf("%s:%s:%d:%c:%s\n",
 	       objname, o->srcid, osrcid->srcidcnt, tls, sym->name);
 }
+static void printundefsym(struct sym *sym)
+{
+	char tls = sym->tls == 'T' ? 'T' : '_';
+	printf("%s:%s:%d:%c:%s\n", "-", "f", -1, tls, sym->name);
+}
 static void mark(struct dso *dsos, int n)
 {
 	for (struct dso *dso = dsos; dso < dsos + n; dso++) {
@@ -493,12 +498,18 @@ static void mark(struct dso *dsos, int n)
 	for (struct dso *dso = dsos; dso < dsos + n; dso++) {
 		if (dso->is_dso == 'R')
 			continue;
-		struct sym *elims = 0, *locs = 0, *hids = 0;
-		int nelim = 0, nloc = 0, nhid = 0;
+		struct sym *elims = 0, *locs = 0, *hids = 0, *undefs = 0;
+		int nelim = 0, nloc = 0, nhid = 0, nundef = 0;
 		for (struct sym *y = dso->sym; y < dso->sym + dso->nsym; y++) {
-			if (y->weak == 'U') continue;
 			if (y->weak == 'C') continue;
-			if (!y->n.preorderidx) {
+			if (y->weak == 'U') {
+				struct sym *u = sym_htab_lookup_only(y->name);
+				if (!u || !u->n.preorderidx) {
+					nundef++;
+					y->n.stacknext = &undefs->n;
+					undefs = y;
+				}
+			} else if (!y->n.preorderidx) {
 				if (!y->defscn->preorderidx) {
 					nelim++;
 					y->n.stacknext = &elims->n;
@@ -517,7 +528,7 @@ static void mark(struct dso *dsos, int n)
 				}
 			}
 		}
-		printf("%d %d %d %s\n", nelim, nloc, nhid, dso->linkid);
+		printf("%d %d %d %d %s\n", nelim, nloc, nhid, nundef, dso->linkid);
 		for (struct sym *y = elims; y; y = (void*)y->n.stacknext)
 			printsym(y);
 		puts("");
@@ -526,6 +537,9 @@ static void mark(struct dso *dsos, int n)
 		puts("");
 		for (struct sym *y = hids; y; y = (void*)y->n.stacknext)
 			printsym(y);
+		puts("");
+		for (struct sym *y = undefs; y; y = (void*)y->n.stacknext)
+			printundefsym(y);
 		puts("");
 	}
 }
