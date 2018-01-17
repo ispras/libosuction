@@ -540,6 +540,10 @@ claim_file_handler(const struct ld_plugin_input_file *file, int *claimed)
 	const char *filename = file->name;
 	const void *view;
 	enum ld_plugin_status status;
+	if (file->offset)
+		for (struct objfile *o = dg_info.obj_list; o; o = o->next)
+			if (o->offset == file->offset && !strcmp(o->name, filename))
+				return 0;
 	if ((status = compat_get_view(file, &view)))
 		return error("%s: get_view: %d", filename, status);
 
