@@ -70,6 +70,8 @@ compute_md5 (void *, void *)
       case OPT_auxbase_strip:;
       case OPT_I:;
       case OPT_L:;
+      case OPT_fuse_ld_bfd:;
+      case OPT_fuse_ld_gold:;
       }
   fclose (f);
 
