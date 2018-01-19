@@ -29,8 +29,8 @@ ALL = $(LD_PLUG_LIBS) $(GCC_PLUG_LIBS) $(TOOLS) $(LD_RT_AUX)
 
 all: $(ALL)
 install: all
-	cp $(GCC_PLUG_LIBS) $(plugdir)
 	mkdir -p $(plugdir)/ld && cp $(LD_PLUG_LIBS) $(plugdir)/ld
+	cp $(GCC_PLUG_LIBS) $(plugdir)
 	cp $(LD_RT_AUX) $(plugdir)/ld/
 export
 check: all install
