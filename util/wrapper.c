@@ -27,21 +27,48 @@
 #error "Compile ld wrapper with -DGCC_RUN={1,2}"
 #endif
 
+static int iself(const unsigned char *view, size_t sz)
+{
+	const ElfNN_(Ehdr) *ehdr = (void *)view;
+	if (sz < sizeof *ehdr
+	    || memcmp(ehdr->e_ident, ELFMAG, SELFMAG)
+	    || ehdr->e_ident[4] != ELFCLASS
+	    || ehdr->e_ident[5] != ELFDATA
+	    || ehdr->e_type != ET_REL
+	    || ehdr->e_shentsize != sizeof(ElfNN_(Shdr)))
+		return 0;
+	return 1;
+}
+
+static int isar(const unsigned char *view, size_t sz)
+{
+	if (sz < SARMAG || memcmp(view, ARMAG, SARMAG))
+		return 0;
+	return 1;
+}
+
+static void* mmap_sz(const char *filename, size_t *sz)
+{
+	int fd;
+	void *view = NULL;
+	if ((fd = open(filename, O_RDONLY)) < 0)
+		return NULL;
+	struct stat s;
+	if (fstat(fd, &s) < 0)
+		goto done;
+	*sz = s.st_size;
+	view = mmap(0, s.st_size, PROT_READ, MAP_SHARED, fd, 0);
+
+ done:
+	close(fd);
+	return view == MAP_FAILED ? NULL : view;
+}
+
 static int get_elfnote_srcid(unsigned char *md5sum, const unsigned char *view)
 {
 	const ElfNN_(Ehdr) *ehdr = (void *)view;
 	typedef ElfNN_(Shdr) Shdr;
-	if (memcmp (ehdr->e_ident, ELFMAG, SELFMAG))
-		return 0;
-	if (ehdr->e_ident[4] != ELFCLASS)
-		return 0;
-	if (ehdr->e_ident[5] != ELFDATA)
-		return 0;
-	if (ehdr->e_type != ET_REL)
-		return 0;
 	Shdr *shdrs = (void *)(view + ehdr->e_shoff);
-	if (ehdr->e_shentsize != sizeof *shdrs)
-		return 0;
 	int shnum = ehdr->e_shnum;
 	if (!shnum && ehdr->e_shoff)
 		shnum = shdrs[0].sh_size;
@@ -64,23 +91,20 @@ static int get_elfnote_srcid(unsigned char *md5sum, const unsigned char *view)
 	return 1;
 }
 
-static int get_file_srcid(unsigned char *md5sum,
-			  const unsigned char *view,
-			  off_t size)
+static void get_file_srcid(unsigned char *md5sum,
+			   const unsigned char *view,
+			   off_t size)
 {
 	if (!get_elfnote_srcid(md5sum, view))
 		md5_buffer(view, size, md5sum);
-	return 1;
 }
 
-static int get_ar_srcid(unsigned char *md5sum,
-			const unsigned char *view,
-			off_t size)
+static void get_ar_srcid(unsigned char *md5sum,
+			 const unsigned char *view,
+			 off_t size)
 {
 	unsigned char md5part[16];
 	const unsigned char *view0 = view;
-	if (size < SARMAG || memcmp(view, ARMAG, SARMAG))
-		return 0;
 	view += SARMAG;
 
 	struct ar_hdr *hdr;
@@ -97,29 +121,6 @@ static int get_ar_srcid(unsigned char *md5sum,
 		}
 		view += member_size + (member_size & 1);
 	}
-	return 1;
-}
-
-static int get_srcid(unsigned char *md5sum, const char *filename)
-{
-	int fd, status = 0;
-	if ((fd = open(filename, O_RDONLY)) < 0)
-		return 0;
-	struct stat s;
-	if (fstat(fd, &s) < 0)
-		goto done;
-	void *view;
-	if ((view = mmap(0, s.st_size, PROT_READ, MAP_SHARED, fd, 0)) == MAP_FAILED)
-		goto done;
-	int len = strlen(filename);
-	if (len >= 2 && !strncmp(filename + len - 2, ".a", 2))
-		status = get_ar_srcid(md5sum, view, s.st_size);
-	else
-		status = get_file_srcid(md5sum, view, s.st_size);
-	munmap(view, s.st_size);
-done:
-	close(fd);
-	return status;
 }
 
 static int gen_linkid(char *md5out, int argc, char *argv[])
@@ -127,19 +128,24 @@ static int gen_linkid(char *md5out, int argc, char *argv[])
 	int nobjs = 0;
 	unsigned char md5sum[16], md5all[16] = { 0 };
 	for (int i = 1; i < argc; i++) {
+		size_t sz;
+		void *view;
 		char *arg = argv[i];
-		size_t l = strlen(arg);
 		if (!strcmp(arg, "-lgcc_eh")) md5all[15] += 42;
 		if (!strcmp(arg, "-o")) { i++; continue; }
-		if (!(l >= 2 && arg[l - 2] == '.'
-		      && (arg[l - 1] == 'a' || arg[l - 1] == 'o')
-		      || l >= 3 && (!strcmp(".os", arg + l - 3)
-				    || !strcmp(".lo", arg + l - 3))))
-		      continue;
+		if (!(view = mmap_sz(arg, &sz)))
+			continue;
+		if (iself(view, sz))
+			get_file_srcid(md5sum, view, sz);
+		else if (isar(view, sz))
+			get_ar_srcid(md5sum, view, sz);
+		else
+			goto unmap;
 		nobjs++;
-		if (get_srcid(md5sum, arg))
-			for (int j = 0; j < sizeof md5sum; j++)
-				md5all[j] ^= md5sum[j];
+		for (int j = 0; j < sizeof md5sum; j++)
+			md5all[j] ^= md5sum[j];
+	unmap:
+		munmap(view, sz);
 	}
 	if (nobjs == 1) md5all[15]++;
 	printmd5(md5out, md5all);
