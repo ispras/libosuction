@@ -5,8 +5,6 @@
 #include <stdint.h>
 #include <unistd.h>
 #include <errno.h>
-#include <sys/sendfile.h>
-#include <sys/mman.h>
 
 #include <elf.h>
 
@@ -18,11 +16,6 @@
 _Static_assert(LD_PLUGIN_API_VERSION == 1, "unexpected plugin API version");
 
 static const char *linkid_err;
-
-struct obj {
-	char filename[18];
-	struct obj *next;
-} *objs;
 
 struct sym {
 	const char *name;
@@ -69,20 +62,6 @@ sym_htab_lookup(const char *name, unsigned *id)
 			return syms_htab.syms + i;
 	}
 }
-static struct sym *
-sym_htab_lookup_only(const char *name, unsigned *id)
-{
-	unsigned hash = sym_hash(name, id);
-	for (size_t i = hash; ; i++) {
-		i &= syms_htab.size - 1;
-		if (!syms_htab.syms[i])
-			return 0;
-		if (syms_htab.hashes[i] == hash
-		    && !memcmp(id, syms_htab.syms[i]->srcid, 4 * sizeof *id)
-		    && !strcmp(name, syms_htab.syms[i]->name))
-			return syms_htab.syms[i];
-	}
-}
 static const char *
 read_syms(const char *linkid, const char *file)
 {
@@ -127,52 +106,12 @@ plug_gen_srcid(char srcid[], const unsigned char *view, size_t len)
 	printmd5(srcid, md5);
 	return srcid;
 }
-static int
-filedup(int fd, off_t offset, off_t filesize)
-{
-	struct obj *obj = malloc(sizeof *obj);
-	strcpy(obj->filename, "/tmp/ldplugXXXXXX");
-	obj->next = objs; objs = obj;
-	static int tmpfd = -1;
-	if (tmpfd >= 0) close(tmpfd);
-	tmpfd = mkstemp(obj->filename);
-	if (tmpfd >= 0) sendfile(tmpfd, fd, &offset, filesize);
-	return tmpfd;
-}
-static void *
-memdup(const void *p, size_t l)
-{
-	void *r = malloc(l);
-	return r ? memcpy(r, p, l) : r;
-}
-static void *
-addrshift(void *addr, unsigned char *cloneview, const unsigned char *view)
-{
-	return cloneview + ((const unsigned char *)addr - view);
-}
-static int
-ldplug_weak(int elfbind, int elfscn)
-{
-	if (elfscn == SHN_UNDEF)
-		return elfbind == STB_WEAK ? LDPK_WEAKUNDEF : LDPK_UNDEF;
-	else if (elfscn == SHN_COMMON)
-		return LDPK_COMMON;
-	if (elfbind == STB_GNU_UNIQUE) elfbind = STB_WEAK;
-	return elfbind == STB_WEAK ? LDPK_WEAKDEF : LDPK_DEF;
-}
-static int
-ldplug_vis(int elfvis)
-{
-	return (int[]){LDPV_DEFAULT, LDPV_INTERNAL, LDPV_HIDDEN, LDPV_PROTECTED}[elfvis];
-}
 static const char *
 process_elf(const char *filename, int fd, off_t offset, off_t filesize,
-	    const unsigned char *view, int *nplugsyms,
-	    struct ld_plugin_symbol **plugsyms, int *claim)
+	    const unsigned char *view)
 {
 	const ElfNN_(Ehdr) *ehdr = (void *)view;
 	typedef ElfNN_(Shdr) Shdr;
-	typedef ElfNN_(Sym) Sym;
 	if (memcmp (ehdr->e_ident, ELFMAG, SELFMAG))
 		return 0;
 	if (ehdr->e_ident[4] != ELFCLASS)
@@ -201,64 +140,14 @@ process_elf(const char *filename, int fd, off_t offset, off_t filesize,
 			break;
 	}
 	if (!srcid) srcid = plug_gen_srcid((char[33]){}, view, filesize);
-	if (linkid_err) {
+	if (linkid_err)
 		fprintf(stderr, "srcid[%s@%lld] = %s\n", filename,
 			(long long)offset, srcid);
-		return 0;
-	}
-	return 0;
-	unsigned id[4];
-	sscanf(srcid, "%8x%8x%8x%8x", id+0, id+1, id+2, id+3);
-	int clonefd = -1;
-	unsigned char *cloneview;
-	for (int i = 1; i < shnum; i++) {
-		Shdr *shdr = shdrs + i;
-		if (shdr->sh_type != SHT_SYMTAB) continue;
-		Shdr *strtab = shdrs + shdr->sh_link;
-		Sym *syms = (void *)(view + shdr->sh_offset);
-		char *strings = (void *)(view + strtab->sh_offset);
-		strings = memdup(strings, strtab->sh_size);
-		size_t nsyms = shdr->sh_size / sizeof (Sym);
-		*plugsyms = calloc(nsyms, sizeof **plugsyms);
-		for (size_t j = 0; j < nsyms; j++) {
-			Sym *sym = syms + j;
-			if (!sym->st_name) continue;
-			int shndx = sym->st_shndx;
-			int bind = ELF_ST_BIND(sym->st_info);
-			int vis = ELF_ST_VISIBILITY(sym->st_other);
-			char *name = strings + sym->st_name;
-			struct sym *s = sym_htab_lookup_only(name, id);
-			if (bind != STB_LOCAL && !strchr(name, '@')) {
-				struct ld_plugin_symbol *plugsym = *plugsyms + nplugsyms[0]++;
-				plugsym->name = name;
-				plugsym->def = ldplug_weak(bind, shndx);
-				plugsym->visibility
-				    = s ? LDPV_HIDDEN : ldplug_vis(vis);
-				plugsym->size = sym->st_size;
-			}
-			if (!s || shndx == SHN_UNDEF) continue;
-			if (clonefd < 0) {
-				clonefd = filedup(fd, offset, filesize);
-				if (clonefd < 0)
-					return strerror(errno);
-				cloneview = mmap(0, filesize,
-						 PROT_READ | PROT_WRITE,
-						 MAP_SHARED, clonefd, 0);
-			}
-			Sym *csym = (void *)addrshift(sym, cloneview, view);
-			csym->st_other = STV_HIDDEN;
-		}
-		break;
-	}
-	if ((*claim = (clonefd >= 0)))
-		munmap(cloneview, filesize);
 	return 0;
 }
 
 static ld_plugin_message message;
 static ld_plugin_get_view get_view;
-static ld_plugin_add_symbols add_symbols;
-static ld_plugin_add_input_file add_input_file;
 
 static enum ld_plugin_status
 error(const char *fmt, ...)
@@ -287,25 +176,19 @@ compat_get_view(const struct ld_plugin_input_file *file, const void **viewp)
 static enum ld_plugin_status
 claim_file_handler(const struct ld_plugin_input_file *file, int *claimed)
 {
-	int nplugsyms = 0;
-	struct ld_plugin_symbol *plugsyms = 0;
 	const char *filename = file->name;
 	const void *view;
 	enum ld_plugin_status status;
 	if ((status = compat_get_view(file, &view)))
 		return error("%s: get_view: %d", filename, status);
 
-	*claimed = 0;
 	const char *errmsg
 		= process_elf(filename, file->fd, file->offset, file->filesize,
-			      view, &nplugsyms, &plugsyms, claimed);
+			      view);
 	if (errmsg)
 		return error("%s: %s", filename, errmsg);
-	if (*claimed)
-		if ((status = add_symbols(file->handle, nplugsyms, plugsyms)))
-			return error("%s: add_symbols: %d", filename, status);
-	//free(plugsyms);
 	if (!get_view) free((void *)view);
+	*claimed = 0;
 	return 0;
 }
 
@@ -314,22 +197,6 @@ all_symbols_read_handler(void)
 {
 	if (linkid_err)
 		return error("could not find linkid %s", linkid_err);
-	struct obj *prev = 0;
-	for (struct obj *next, *o = objs; o; o = next)
-		next = o->next, o->next = prev, prev = o;
-	objs = prev;
-	enum ld_plugin_status status;
-	for (struct obj *o = objs; o; o = o->next)
-		if ((status = add_input_file(o->filename)))
-			return error("%s: add_input_file: %d", o->filename, status);
-	return 0;
-}
-
-static enum ld_plugin_status
-cleanup_handler (void)
-{
-	for (struct obj *o = objs; o; o = o->next)
-		unlink(o->filename);
 	return 0;
 }
 
@@ -347,8 +214,6 @@ onload(struct ld_plugin_tv *tv)
 		return error("linker plugin API version mismatch");
 
 	get_view = u[LDPT_GET_VIEW].tv_get_view;
-	add_symbols = u[LDPT_ADD_SYMBOLS].tv_add_symbols;
-	add_input_file = u[LDPT_ADD_INPUT_FILE].tv_add_input_file;
 	const char *optstr = u[LDPT_OPTION].tv_string, *linkid, *symfile;
 	if (!optstr)
 		return error("no input file");
@@ -362,7 +227,6 @@ onload(struct ld_plugin_tv *tv)
 	    (claim_file_handler);
 	u[LDPT_REGISTER_ALL_SYMBOLS_READ_HOOK].tv_register_all_symbols_read
 	    (all_symbols_read_handler);
-	u[LDPT_REGISTER_CLEANUP_HOOK].tv_register_cleanup(cleanup_handler);
 	return 0;
 }
 _Static_assert(sizeof((ld_plugin_onload){onload}) != 0, "");
