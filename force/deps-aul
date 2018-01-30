@@ -1,0 +1,57 @@
+E 1 1 __force_dynamic _start ffffffffffffffffffffffffffffffff
+1	0	__force_dynamic.o ffffffffffffffffffffffffffffffff
+	1	0	.text	0
+		0
+26
+Ud -1	aul_svc_get_data
+	1 0
+Ud -1	aul_svc_set_launch_mode
+	1 0
+Ud -1	aul_svc_subapp_terminate_request_pid
+	1 0
+Ud -1	aul_svc_get_all_defapps
+	1 0
+Ud -1	aul_svc_request_transient_app
+	1 0
+Ud -1	aul_svc_set_category
+	1 0
+Ud -1	aul_svc_get_list
+	1 0
+Ud -1	aul_svc_add_data
+	1 0
+Ud -1	aul_svc_get_launch_mode
+	1 0
+Ud -1	aul_svc_get_pkgname
+	1 0
+Ud -1	aul_svc_unset_all_defapps
+	1 0
+Ud -1	aul_svc_is_defapp_for_uid
+	1 0
+Ud -1	aul_svc_set_uri
+	1 0
+Ud -1	aul_svc_run_service
+	1 0
+Ud -1	aul_svc_data_is_array
+	1 0
+Ud -1	aul_svc_allow_transient_app
+	1 0
+Ud -1	aul_svc_get_data_array
+	1 0
+Ud -1	aul_svc_get_list_for_uid
+	1 0
+Ud -1	aul_svc_send_result
+	1 0
+Ud -1	aul_svc_create_result_bundle
+	1 0
+Ud -1	aul_svc_set_mime
+	1 0
+Ud -1	aul_svc_set_pkgname
+	1 0
+Ud -1	aul_svc_add_data_array
+	1 0
+Ud -1	aul_svc_get_category
+	1 0
+Ud -1	aul_app_get_pkgid_bypid_for_uid
+	1 0
+Ud -1	aul_app_get_appid_bypid_for_uid
+	1 0

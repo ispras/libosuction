@@ -1,0 +1,7 @@
+E 1 1 __force_dynamic _start ffffffffffffffffffffffffffffffff
+1	0	__force_dynamic.o ffffffffffffffffffffffffffffffff
+	1	0	.text	0
+		0
+1
+Ud -1	sd_get_uids
+	1 0

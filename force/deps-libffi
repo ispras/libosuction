@@ -2,6 +2,12 @@ E 1 1 __force_dynamic _start ffffffffffffffffffffffffffffffff
 1	0	__force_dynamic.o ffffffffffffffffffffffffffffffff
 	1	0	.text	0
 		0
-1
-Ud -1	__gxx_personality_v0
+4
+Ud -1	ffi_type_sint8
+	1 0
+Ud -1	ffi_type_uint8
+	1 0
+Ud -1	ffi_type_sint16
+	1 0
+Ud -1	ffi_type_uint16
 	1 0

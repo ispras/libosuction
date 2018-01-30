@@ -1,0 +1,25 @@
+E 1 1 __force_dynamic _start ffffffffffffffffffffffffffffffff
+1	0	__force_dynamic.o ffffffffffffffffffffffffffffffff
+	1	0	.text	0
+		0
+10
+Ud -1	X509_VERIFY_PARAM_set_trust
+	1 0
+Ud -1	BIO_method_type
+	1 0
+Ud -1	OPENSSL_DIR_read
+	1 0
+Ud -1	OPENSSL_DIR_end
+	1 0
+Ud -1	PEM_ASN1_read
+	1 0
+Ud -1	PEM_ASN1_write
+	1 0
+Ud -1	PEM_read_bio_RSAPrivateKey
+	1 0
+Ud -1	d2i_RSAPrivateKey_bio
+	1 0
+Ud -1	nettle_base64_encode_raw
+	1 0
+Ud -1	nettle_base64_encode_group
+	1 0

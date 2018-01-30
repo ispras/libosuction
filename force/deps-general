@@ -1,0 +1,21 @@
+E 1 1 __force_dynamic _start ffffffffffffffffffffffffffffffff
+1	0	__force_dynamic.o ffffffffffffffffffffffffffffffff
+	1	0	.text	0
+		0
+8
+Ud -1	nm_test_func
+	1 0
+Ud -1	nm_test_var
+	1 0
+Ud -1	foobar
+	1 0
+Ud -1	__gxx_personality_v0
+	1 0
+Ud -1	__gcc_personality_v0
+	1 0
+Ud -1	__gnu_Unwind_Find_exidx
+	1 0
+Ud -1	__cxa_type_match
+	1 0
+Ud -1	__cxa_begin_cleanup
+	1 0

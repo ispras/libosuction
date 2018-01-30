@@ -1,0 +1,41 @@
+E 1 1 __force_dynamic _start ffffffffffffffffffffffffffffffff
+1	0	__force_dynamic.o ffffffffffffffffffffffffffffffff
+	1	0	.text	0
+		0
+18
+Ud -1	GI_GET_TYPE_FUNCS_
+	1 0
+Ud -1	json_node_get_type
+	1 0
+Ud -1	json_object_get_type
+	1 0
+Ud -1	json_array_get_type
+	1 0
+Ud -1	json_builder_get_type
+	1 0
+Ud -1	json_generator_get_type
+	1 0
+Ud -1	json_serializable_get_type
+	1 0
+Ud -1	json_parser_get_type
+	1 0
+Ud -1	json_path_get_type
+	1 0
+Ud -1	json_reader_get_type
+	1 0
+Ud -1	json_parser_error_get_type
+	1 0
+Ud -1	json_path_error_get_type
+	1 0
+Ud -1	json_reader_error_get_type
+	1 0
+Ud -1	json_node_type_get_type
+	1 0
+Ud -1	GI_ERROR_QUARK_FUNCS_
+	1 0
+Ud -1	json_parser_error_quark
+	1 0
+Ud -1	json_path_error_quark
+	1 0
+Ud -1	json_reader_error_quark
+	1 0

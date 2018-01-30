@@ -1,0 +1,13 @@
+E 1 1 __force_dynamic _start ffffffffffffffffffffffffffffffff
+1	0	__force_dynamic.o ffffffffffffffffffffffffffffffff
+	1	0	.text	0
+		0
+4
+Ud -1	_ZN7glslang13TIntermediate16getBaseAlignmentERKNS_5TTypeERiS4_bb
+	1 0
+Ud -1	_ZNK7glslang13TIntermediate23computeTypeLocationSizeERKNS_5TTypeE
+	1 0
+Ud -1	_ZN7glslang16GetKhronosToolIdEv
+	1 0
+Ud -1	_ZN7glslang12DetachThreadEv
+	1 0

@@ -1,0 +1,9 @@
+E 1 1 __force_dynamic _start ffffffffffffffffffffffffffffffff
+1	0	__force_dynamic.o ffffffffffffffffffffffffffffffff
+	1	0	.text	0
+		0
+2
+Ud -1	_ZN8MetaData7HotHeap7GetDataEjPNS_8DataBlobE
+	1 0
+Ud -1	_ZN15StgPoolReadOnly7GetDataEjPN8MetaData8DataBlobE
+	1 0

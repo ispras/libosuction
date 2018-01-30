@@ -1,0 +1,19 @@
+E 1 1 __force_dynamic _start ffffffffffffffffffffffffffffffff
+1	0	__force_dynamic.o ffffffffffffffffffffffffffffffff
+	1	0	.text	0
+		0
+7
+Ud -1	_mkstr_tzplatform_
+	1 0
+Ud -1	_context_mkstr_tzplatform_
+	1 0
+Ud -1	_context_getenv_int_tzplatform_
+	1 0
+Ud -1	_context_getgid_tzplatform_
+	1 0
+Ud -1	_getenv_int_tzplatform_
+	1 0
+Ud -1	_context_mkpath_tzplatform_
+	1 0
+Ud -1	_context_getuid_tzplatform_
+	1 0
