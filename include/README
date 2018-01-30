@@ -1,0 +1,3 @@
+The directory contains an empty file arm-flags.h. It is required
+due to PR79260 in GCC that was fixed in 7 version, however GCC 6.2.1
+used in Tizen 4 is affected.

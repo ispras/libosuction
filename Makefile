@@ -7,7 +7,7 @@ CFLAGS += -ffunction-sections -fdata-sections
 CFLAGS += -Wall -Wno-parentheses
 
 CXXFLAGS += $(filter-out -std=%, $(CFLAGS)) -fno-rtti -fno-exceptions
-CPPFLAGS += -I$(shell $(CC) -print-file-name=plugin)/include
+CPPFLAGS += -I$(shell $(CC) -print-file-name=plugin)/include -Iinclude
 
 LD_PLUG_NAMES = plug plug-priv
 LD_PLUG_LIBS = $(addprefix ld-plug/, $(LD_PLUG_NAMES:%=lib%.so))
