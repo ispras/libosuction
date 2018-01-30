@@ -96,6 +96,7 @@ test -e "$cfg" || die "Please run configure first."
 gcc=$(grep 'CC =' $cfg | awk '{ print $3 }')
 gxx=$(grep 'CXX =' $cfg | awk '{ print $3 }')
 plugdir=$(grep 'plugdir =' $cfg | awk '{ print $3 }')
+auxdir=$(grep 'auxdir =' $cfg | awk '{ print $3 }')
 suffix=$(grep ORIG_CMD_SUFFIX $util/gcc-wrapper.c |
               head -1 | awk '{ print $3 }' | tr -d '"')
 gcc_real=$gcc$suffix
@@ -125,16 +126,16 @@ dpid=$!
 if shallrun 0; then
   buildpass 0
   cat jfunc-* > jfunc-all
-  $util/jf2sign jfunc-all $util/dlsym-signs-base.txt > $plugdir/dlsym-signs.txt || die
+  $util/jf2sign jfunc-all $util/dlsym-signs-base.txt > $auxdir/dlsym-signs.txt || die
 fi
 if shallrun 1; then
   buildpass 1
-  merged=$plugdir/merged.vis
+  merged=$auxdir/merged.vis
   cat dlsym-* | grep CONSTANT > dyndeps # FIXME: merge dynamic annotations
   cp $util/force-dynamic deps-force-dynamic # The name ensures globbing won't fail.
   $util/merge dyndeps deps-* > $merged || die "Merge failed."
   amended=$($util/amend-merge-output.sh $merged)
-  mv $amended $plugdir/merged.vis.gcc
+  mv $amended $auxdir/merged.vis.gcc
 fi
 if shallrun 2; then
   buildpass 2

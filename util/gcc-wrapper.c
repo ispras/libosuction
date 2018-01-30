@@ -13,8 +13,8 @@
 #define SIGNDLSYM "dlsym-signs"
 #define DLSYMPLUG       PLUGDIR LIBDLSYM ".so"
 #define MKPRIVPLUG      PLUGDIR LIBMKPRIV ".so"
-#define MERGED_GCC_DATA PLUGDIR "merged.vis.gcc"
-#define DLSYMIN         PLUGDIR SIGNDLSYM ".txt"
+#define MERGED_GCC_DATA AUXDIR "merged.vis.gcc"
+#define DLSYMIN         AUXDIR SIGNDLSYM ".txt"
 
 #if (!(GCC_RUN >= 0 || GCC_RUN <= 2))
 #error "Compile gcc-wrapper with -DGCC_RUN={0,1,2}"
