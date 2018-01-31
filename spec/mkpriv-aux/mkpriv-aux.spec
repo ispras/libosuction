@@ -5,7 +5,7 @@ Summary:        Auxiliary files for mkpriv1
 License:        GPL-3.0+
 Url:            http://ispras.ru
 Group:          Development/Building
-Source:         mkpriv-aux-%_repository.tar.gz
+Source:         mkpriv-aux.tar.gz
 AutoReqProv:    off
 
 %define AUXDIR	/var/lib/mkpriv

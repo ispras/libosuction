@@ -3,7 +3,7 @@
 # Path pattern of obs hosts store auxiliary information between runs
 HOST_DIR="*obs*"
 # Path pattern of deps files with forced symbols
-FORCE_FILES="force-deps/*"
+FORCE_FILES="force/*"
 # Patterns for auxiliary files
 JF_FILES="jfunc-*"
 DEPS_FILES="deps-*"
