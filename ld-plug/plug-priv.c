@@ -140,6 +140,9 @@ process_elf(const char *filename, int fd, off_t offset, off_t filesize,
 			break;
 	}
 	if (!srcid) srcid = plug_gen_srcid((char[33]){}, view, filesize);
+	/* fprintf is lower level of abstraction than error/message, but we use
+	 * it here since we don't want every srcid to be prefixed with
+	 * e.g. 'ld.bfd: ...', plus gold would exit on message(LDPL_FATAL,..). */
 	if (linkid_err)
 		fprintf(stderr, "srcid[%s@%lld] = %s\n", filename,
 			(long long)offset, srcid);
