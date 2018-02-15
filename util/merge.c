@@ -222,6 +222,7 @@ find_dyndeps_scn(struct obj *o, const char *scn)
 			return o->scns + i;
 	return 0;
 }
+__attribute__((unused))
 static int
 is_implicitly_used_section(const char *name)
 {
@@ -230,6 +231,26 @@ is_implicitly_used_section(const char *name)
 	size_t lsda_scn_len = sizeof lsda_scn - 1;
 	if (!strncmp(name, lsda_scn, lsda_scn_len))
 		return !name[lsda_scn_len] || name[lsda_scn_len] == '.';
+	return 0;
+}
+static int
+section_may_have_extab(const char *name)
+{
+	// Noooo...
+	if (!strncmp(name, ".text", 5))
+		return !name[5] || name[5] == '.';
+	return 0;
+}
+static int
+section_is_extab_for(const char *xname, const char *tname)
+{
+	// Nooooooo...
+	static const char *const xnames[] = {".gcc_except_table", ".ARM.extab", ".ARM.exidx"};
+	for (int i = 0; i < sizeof xnames / sizeof *xnames; i++) {
+		size_t len = strlen(xnames[i]);
+		if (!strncmp(xname, xnames[i], len))
+			return !strcmp(xname + len, tname + 5) || !strcmp(xname + len, tname);
+	}
 	return 0;
 }
 static void
@@ -257,12 +278,12 @@ input(struct dso *dso, FILE *f)
 		for (; s < o->scns + o->nscn; s++) {
 			fscanf(f, "%d %lld %ms %*[^\n]", &s->used, &s->size, &s->name);
 			s->objptr = o;
-			/* XXX c++ exceptions hack */
-			if (!s->used)
-				s->used = is_implicitly_used_section(s->name);
 			struct scn *ds = find_dyndeps_scn(o->srcidmain, s->name);
 			fscanf(f, "%d", &s->nscndeps);
 			int alloc = s->nscndeps + !!ds;
+			/* XXX extra slots for exceptions hack below: */
+			if (section_may_have_extab(s->name))
+				alloc += 2;
 			if (!alloc) continue;
 			s->scndeps = malloc(alloc * sizeof *s->scndeps);
 			for (int i = 0; i < s->nscndeps; i++) {
@@ -273,6 +294,16 @@ input(struct dso *dso, FILE *f)
 			if (ds)
 				s->scndeps[s->nscndeps++] = ds;
 		}
+		for (s = o->scns; s < o->scns + o->nscn; s++)
+			if (section_may_have_extab(s->name)) {
+				struct scn *x1 = s, *x2 = s;
+				for (struct scn *ts = o->scns; ts < o->scns + o->nscn; ts++)
+					if (section_is_extab_for(ts->name, s->name))
+						x1 = x2, x2 = ts;
+				s->scndeps[s->nscndeps++] = x1;
+				s->scndeps[s->nscndeps++] = x2;
+			}
+
 	}
 	fscanf(f, "%d", &dso->nsym);
 	dso->entrysym = 0;
