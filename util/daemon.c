@@ -6,20 +6,71 @@
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
+#include <getopt.h>
 
+#include <sys/types.h>
 #include <sys/socket.h>
-#include <sys/un.h>
+#include <netdb.h>
 
-int main()
+#include "daemon-ports.h"
+
+#define STRING_(n) #n
+#define STRING(n) STRING_(n)
+
+static const struct option opts[] = {
+	{ .name = "cc",   .has_arg = 0, .val = 'c' },
+	{ .name = "ld",   .has_arg = 0, .val = 'l' },
+	{ .name = "port", .has_arg = 1, .val = 'p' },
+	{ 0 }
+};
+
+static void usage(const char *name)
 {
-	int sockfd, peerfd;
-	struct sockaddr_un sa = {.sun_family = AF_UNIX};
-	memcpy(sa.sun_path, "\0ldprivd", 8);
+	fprintf(stderr, "usage: %s (--cc | --ld) [--port n]\n", name);
+}
 
-	if ((sockfd = socket(AF_UNIX, SOCK_STREAM, 0)) < 0
-	    || bind(sockfd, (void *) &sa, sizeof sa) < 0
-	    || listen(sockfd, 128) < 0)
-		goto err;
+int main(int argc, char *argv[])
+{
+	const char *port = 0;
+	int v;
+	while ((v = getopt_long(argc, argv, "", opts, 0)) != -1)
+		switch (v) {
+		case 'c':
+			if (!port) port = STRING(DEFAULT_PORT_CC);
+			break;
+		case 'l':
+			if (!port) port = STRING(DEFAULT_PORT_LD);
+			break;
+		case 'p':
+			port = optarg;
+			break;
+		default:
+			usage(argv[0]);
+			return 1;
+		}
+	if (!port || optind < argc) {
+		usage(argv[0]);
+		return 1;
+	}
+	struct addrinfo *r, ai = {
+		.ai_flags = AI_PASSIVE,
+		.ai_family = AF_INET,
+		.ai_socktype = SOCK_STREAM
+	};
+	int aierr = getaddrinfo(0, port, &ai, &r);
+	if (aierr) {
+		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(aierr));
+		return 1;
+	}
+	int sockfd, peerfd;
+	if ((sockfd = socket(r->ai_family, r->ai_socktype, r->ai_protocol)) < 0
+	    || bind(sockfd, r->ai_addr, r->ai_addrlen) < 0
+	    || listen(sockfd, 128) < 0) {
+		fprintf(stderr, "%s\n", strerror(errno));
+		return 1;
+	}
+
+	setlinebuf(stdout);
 
 	int fileno = 0;
 #pragma omp parallel
@@ -68,8 +119,4 @@ int main()
 		if (out) fclose(out);
 		fclose(f);
 	}
-	return 0;
-err:
-	fprintf(stderr, "%s\n", strerror(errno));
-	return 1;
 }
