@@ -14,5 +14,5 @@ die() {
 
 for s in $globstr
 do
-  source ./$s
+  . ./$s
 done
