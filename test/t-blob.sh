@@ -17,5 +17,5 @@ $CXX [123].o -o exe3-2 || exit 10
 $CC  [123].o -o exe3-1 || exit 10
 # Test ld -r
 ld -r 2.o 3.o -o exe-reloc.os || exit 11
-ld -shared -fPIC exe-reloc.os -lc -o lib4.so || exit 12
+ld -shared -fPIC exe-reloc.os -o lib4.so || exit 12
 $CC unrelated.c -L. -l4 -o exe4
