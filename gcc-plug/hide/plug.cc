@@ -349,11 +349,6 @@ compmd5 (void *, void *)
   flag_dump_noaddr = 1;
   dump_symtab (f);
 
-  cgraph_node *node;
-  FOR_EACH_DEFINED_FUNCTION (node)
-    if (cgraph_function_with_gimple_body_p (node))
-      dump_function_to_file (node->decl, f, TDF_SLIM);
-
   flag_dump_noaddr = save_noaddr;
 
   for (int i = 0; i < save_decoded_options_count; i++)
