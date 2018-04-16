@@ -184,6 +184,8 @@ pass_hide_globally_invisible::do_localize_node (symtab_node *node)
 {
   make_decl_local (node);
   TREE_USED (node->decl) = 1;
+  DECL_PRESERVE_P (node->decl) = 1;
+  node->force_output = 1;
 
   /* This code does the right thing but looks useless since control never
      reaches inside the if.  Theoretical use-cases are
@@ -194,9 +196,7 @@ pass_hide_globally_invisible::do_localize_node (symtab_node *node)
 #if 0
   if (localize_p (node))
     {
-      node->force_output = 1;
       TREE_USED (node->decl) = 1;
-      DECL_PRESERVE_P (node->decl) = 1;
     }
 #endif
 }
