@@ -278,6 +278,77 @@ hid_file(const char *linkid)
 }
 #endif
 
+struct exp_args {
+	char **argv;
+	int argc;
+	char *resp_file;
+};
+
+struct exp_args expand_args(int argc, char **argv)
+{
+	int total_args = argc;
+	struct exp_args result = { argv, argc, NULL };
+	/* Try to find and read a response file */
+	int resp_idx = -1;
+	for (int i = 0; i < argc; ++i) {
+		char *arg = argv[i];
+		if (arg[0] == '@') {
+			if (resp_idx >= 0)
+				die("Do not handle multiple resp files\n");
+
+			FILE *f = fopen(arg + 1, "r");
+			struct stat buff;
+			fstat(fileno(f), &buff);
+			char *content = malloc(buff.st_size + 1);
+			fread(content, sizeof(char), buff.st_size, f);
+			fclose(f);
+			content[buff.st_size] = '\0';
+
+			char *entry_ptr = content;
+			// Ignore @filename argument
+			--total_args;
+			while (*entry_ptr) {
+				if (*entry_ptr == '@') {
+					free(content);
+					die("Do not handle nested resp files\n");
+				}
+
+				++total_args;
+				entry_ptr = strchr(entry_ptr, '\n');
+				if (!entry_ptr) break;
+				++entry_ptr;
+			}
+			resp_idx = i;
+			result.resp_file = content;
+		}
+	}
+
+	/* Return original argv array if no response file is in arguments */
+	if (!result.resp_file)
+		return result;
+
+	/* Forming argv with the expanded response file */
+	char **expanded_argv = malloc(total_args * sizeof *expanded_argv);
+	memcpy(expanded_argv, argv, resp_idx * sizeof *argv);
+
+	char *content = result.resp_file;
+	int content_idx = resp_idx;
+	while (*content) {
+		expanded_argv[content_idx++] = content;
+		content = strchr(content, '\n');
+		if (!content) break;
+		*content = '\0';
+		++content;
+	}
+
+	memcpy(expanded_argv + content_idx, argv + resp_idx + 1,
+	       (total_args - content_idx) * sizeof *argv);
+
+	result.argv = expanded_argv;
+	result.argc = total_args;
+	return result;
+}
+
 int main(int argc, char *argv[])
 {
 	char *name = strrchr(argv[0], '/');
@@ -289,10 +360,13 @@ int main(int argc, char *argv[])
 			goto ok;
 	die("bad wrapped command\n");
 ok:;
+	struct exp_args exargs = expand_args(argc, argv);
+	int exargc = exargs.argc;
+	char **exargv = exargs.argv;
 
 	char *entry = "_start";
 	char *outfile = "a.out";
-	parse_entry_out(argc, argv, &entry, &outfile);
+	parse_entry_out(exargc, exargv, &entry, &outfile);
 
 	char origcmd[7 + sizeof ALTDIR] = ALTDIR;
 	strcpy(origcmd + sizeof ALTDIR - 1, name);
@@ -303,14 +377,14 @@ ok:;
 	bool incremental_p = false;
 
 	char optstr[128];
-	if (!gen_linkid(optstr, argc, argv)) {
+	if (!gen_linkid(optstr, exargc, exargv)) {
 		newargv = argv;
 		goto exec;
 	}
 
-	for (int i = 1; i < argc; i++)
-		if (!strcmp(argv[i], "-r") || !strcmp(argv[i], "-i")
-		    || !strcmp(argv[i], "--relocatable")) {
+	for (int i = 1; i < exargc; i++)
+		if (!strcmp(exargv[i], "-r") || !strcmp(exargv[i], "-i")
+		    || !strcmp(exargv[i], "--relocatable")) {
 			incremental_p = true;
 			break;
 		}
@@ -350,6 +424,11 @@ ok:;
 	newargv[argc++] = optstr;
 	newargv[argc++] = 0;
 exec:;
+	if (exargs.resp_file) {
+		free(exargs.argv);
+		free(exargs.resp_file);
+	}
+
 	if (incremental_p) {
 		exec_child(origcmd, newargv);
 		char *strip_argv[] = { "strip",
