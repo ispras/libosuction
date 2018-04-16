@@ -17,6 +17,7 @@
 #include <plugin-api.h>
 _Static_assert(LD_PLUGIN_API_VERSION == 1, "unexpected plugin API version");
 
+static int ld_is_gold;
 static int sockfd;
 static struct {
 	const char *output_name;
@@ -480,7 +481,15 @@ process_elf(const char *filename, off_t offset, off_t filesize,
 				*symslot = syms++;
 				syms_htab.used++;
 			} else if (!ssym.weak && !(*symslot)->weak) {
-				return "duplicate definition";
+				/* NOTE: duplicated definition is possible in
+				   bfd linker.  If a static library contains
+				   similar symbols in different object files,
+				   bfd linker gives plugin to look at all the
+				   files even if do not look at the files
+				   itself (e.g. a definition has been already
+				   found).  */
+				if (ld_is_gold)
+					return "duplicate definition";
 			} else if (ssym.weak < (*symslot)->weak) {
 				ssym.firstrel = (*symslot)->firstrel;
 				**symslot = ssym;
@@ -577,6 +586,8 @@ onload(struct ld_plugin_tv *tv)
 		return LDPS_ERR;
 	if (u[LDPT_API_VERSION].tv_val != LD_PLUGIN_API_VERSION)
 		return error("linker plugin API version mismatch");
+
+	ld_is_gold = !!(u[LDPT_GOLD_VERSION].tv_val);
 
 	get_view = u[LDPT_GET_VIEW].tv_get_view;
 	u[LDPT_REGISTER_CLAIM_FILE_HOOK].tv_register_claim_file
