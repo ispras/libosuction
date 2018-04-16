@@ -98,6 +98,22 @@ dump_check_test "part-const" "dlsym set state:PARTIALLY_CONSTANT" 1
 dump_check_test "symbol" "main->dlsym->\[_init\]" 1
 cleanup_test
 
+### array_const_idx_sens.c
+TFILE="array_const_idx_sens.c"
+
+compile_test
+dump_check_test "sign" "sqlite3_load_extension matched to the signature" 1
+dump_check_test "dyn" "sqlite3_load_extension set state:DYNAMIC" 1
+cleanup_test
+
+### array_var_idx_sens.c
+TFILE="array_var_idx_sens.c"
+
+compile_test
+dump_check_test "sign" "sqlite3_load_extension matched to the signature" 1
+dump_check_test "dyn" "sqlite3_load_extension set state:DYNAMIC" 1
+cleanup_test
+
 ### asm_name.c
 TFILE="asm_name.c"
 

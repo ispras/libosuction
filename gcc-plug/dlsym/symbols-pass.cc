@@ -140,25 +140,24 @@ is_read_only (struct resolve_ctx *ctx, struct varpool_node *node)
   return true;
 }
 
+/* The function return true if CAND_P expression could be a value of BASE_P
+   and false otherwise. */
 static bool
-compare_ref (tree *t1, tree *t2)
+compare_ref (tree *base_p, tree *cand_p)
 {
-  tree *p1 = t1, *p2 = t2;
-  while (TREE_CODE (*p1) != VAR_DECL && TREE_CODE (*p2) != VAR_DECL)
+  while (!VAR_P (*base_p) && !VAR_P (*cand_p))
     {
-      if (TREE_CODE (*p1) != TREE_CODE (*p2)
-	  || TREE_CODE (*p1) == VAR_DECL
-	  || TREE_CODE (*p2) == VAR_DECL)
+      if (TREE_CODE (*base_p) != TREE_CODE (*cand_p)
+	  || VAR_P (*base_p) || VAR_P (*cand_p))
 	return false;
 
-      switch (TREE_CODE (*p1))
+      switch (TREE_CODE (*base_p))
 	{
 	case ARRAY_REF:
-	  /* Just skip it, we do not care about indeces */
 	  break;
 
 	case COMPONENT_REF:
-	  if (TREE_OPERAND (*p1, 1) != TREE_OPERAND (*p2, 1))
+	  if (TREE_OPERAND (*base_p, 1) != TREE_OPERAND (*cand_p, 1))
 	    return false;
 	  break;
 
@@ -166,10 +165,10 @@ compare_ref (tree *t1, tree *t2)
 	  return false;
 	}
 
-      p1 = &TREE_OPERAND (*p1, 0);
-      p2 = &TREE_OPERAND (*p2, 0);
+      base_p = &TREE_OPERAND (*base_p, 0);
+      cand_p = &TREE_OPERAND (*cand_p, 0);
     }
-  return *p1 == *p2;
+  return *base_p == *cand_p;
 }
 
 static void
@@ -203,6 +202,18 @@ collect_values_global (struct resolve_ctx *ctx, struct varpool_node *node)
   return result;
 }
 
+static void
+clear_visited (struct cgraph_node *node)
+{
+  basic_block bb;
+  FOR_EACH_BB_FN (bb, get_fun_cgraph_node (node))
+    {
+      gimple_stmt_iterator si;
+      for (si = gsi_start_bb (bb); !gsi_end_p (si); gsi_next (&si))
+	gimple_set_visited (gsi_stmt (si), false);
+    }
+}
+
 /* Collect values from assignment statements in GET_CURRENT_CALL_INFO (CTX)
    for local variable */
 static resolve_lattice_t
@@ -222,15 +233,18 @@ collect_values_local (struct resolve_ctx *ctx, tree *expr_p)
 	  /* If it is a single assignment, analyze rhs */
 	  if (is_gimple_assign (stmt)
 	      && (gimple_assign_single_p (stmt)
-		  || gimple_assign_unary_nop_p (stmt)))
+		  || gimple_assign_unary_nop_p (stmt))
+	      && !gimple_visited_p (stmt))
 	    {
 	      tree rhs = gimple_assign_rhs1 (stmt);
 	      tree lhs = gimple_assign_lhs (stmt);
 
 	      if (compare_ref (expr_p, &lhs) && !TREE_CLOBBER_P (rhs))
 		{
+		  gimple_set_visited (stmt, true);
 		  resolve_lattice_t p_res = parse_symbol (ctx, stmt, rhs);
 		  result = resolve_lattice_meet (result, p_res);
+		  gimple_set_visited (stmt, false);
 		}
 	    }
 	}
@@ -465,6 +479,7 @@ parse_default_def (struct resolve_ctx *ctx, tree default_def)
 	}
       push_call_info (ctx, cs->caller, cs->call_stmt, &subsign);
 
+      clear_visited (cs->caller);
       symbol = gimple_call_arg (cs->call_stmt, arg_num);
       parse_result = parse_symbol (ctx, cs->call_stmt, symbol);
       result = resolve_lattice_meet (result, parse_result);
@@ -632,6 +647,7 @@ process_calls (struct cgraph_node *node)
 
 	  push_call_info (ctx, node, cs->call_stmt, curr_sign);
 
+	  clear_visited (node);
 	  symbol = gimple_call_arg (cs->call_stmt, curr_sign->sym_pos);
 	  ctx->status = parse_symbol (ctx, cs->call_stmt, symbol);
 
