@@ -380,7 +380,7 @@ compmd5 (void *, void *)
       }
   fclose (f);
 
-  blind_strings (streamptr, streamsz);
+  streamsz = erase_strings (streamptr, streamsz);
 
   unsigned char md5sum[16];
   md5_buffer (streamptr, streamsz, md5sum);

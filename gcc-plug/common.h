@@ -29,4 +29,33 @@ blind_strings (char *buf, size_t size)
       }
 }
 
+static size_t
+erase_strings (char *buf, size_t size)
+{
+  if (size == 0)
+    return size;
+
+  int new_size = 0, in_single = 0, in_double = 0;
+  for (char *c = buf; c < buf + size - 1; c++)
+    {
+      if (!in_double || *c == '"')
+        buf[new_size++] = *c;
+
+      switch (*c)
+      {
+        case '\\':
+          c++;
+          continue;
+        case '\'':
+          in_single ^= ~in_double;
+          break;
+        case '"':
+          in_double ^= ~in_single;
+          break;
+      }
+    }
+
+  return new_size;
+}
+
 #endif // GCC_PLUG_COMMON_H
