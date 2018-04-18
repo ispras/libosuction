@@ -1,9 +1,0 @@
-E 1 1 __force_dynamic _start ffffffffffffffffffffffffffffffff
-1	0	__force_dynamic.o ffffffffffffffffffffffffffffffff
-	1	0	.text	0
-		0
-2
-Ud -1	pkgmgrinfo_appinfo_get_list
-	1 0
-Ud -1	pkgmgrinfo_appinfo_foreach_category
-	1 0

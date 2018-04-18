@@ -1,9 +1,0 @@
-E 1 1 __force_dynamic _start ffffffffffffffffffffffffffffffff
-1	0	__force_dynamic.o ffffffffffffffffffffffffffffffff
-	1	0	.text	0
-		0
-2
-Ud -1	gnutls_credentials_get
-	1 0
-Ud -1	gnutls_fingerprint
-	1 0

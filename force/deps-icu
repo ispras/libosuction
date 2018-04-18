@@ -1,9 +1,0 @@
-E 1 1 __force_dynamic _start ffffffffffffffffffffffffffffffff
-1	0	__force_dynamic.o ffffffffffffffffffffffffffffffff
-	1	0	.text	0
-		0
-2
-Ud -1	_ZNK3icu13UnicodeString14extractBetweenEiiRS0_
-	1 0
-Ud -1	_ZNK3icu13UnicodeString5cloneEv
-	1 0
