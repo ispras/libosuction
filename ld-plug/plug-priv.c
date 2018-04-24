@@ -161,7 +161,7 @@ error(const char *fmt, ...)
 	vsnprintf(buf, sizeof buf, fmt, va);
 	va_end(va);
 	message(LDPL_FATAL, "%s", buf);
-	return LDPL_FATAL;
+	return LDPS_ERR;
 }
 
 static enum ld_plugin_status
@@ -212,7 +212,7 @@ onload(struct ld_plugin_tv *tv)
 			u[tv->tv_tag] = tv->tv_u;
 	message = u[LDPT_MESSAGE].tv_message;
 	if (!message)
-		return LDPL_FATAL;
+		return LDPS_ERR;
 	if (u[LDPT_API_VERSION].tv_val != LD_PLUGIN_API_VERSION)
 		return error("linker plugin API version mismatch");
 
