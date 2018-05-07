@@ -1,7 +1,6 @@
 #ifndef DAEMON_PORTS_H
 #define DAEMON_PORTS_H
 
-#define DEFAULT_PORT_CC 33347
-#define DEFAULT_PORT_LD 33348
+#define DEFAULT_PORT 33347
 
 #endif

@@ -18,29 +18,21 @@
 #define STRING(n) STRING_(n)
 
 static const struct option opts[] = {
-	{ .name = "cc",   .has_arg = 0, .val = 'c' },
-	{ .name = "ld",   .has_arg = 0, .val = 'l' },
 	{ .name = "port", .has_arg = 1, .val = 'p' },
 	{ 0 }
 };
 
 static void usage(const char *name)
 {
-	fprintf(stderr, "usage: %s (--cc | --ld) [--port n]\n", name);
+	fprintf(stderr, "usage: %s [--port n]\n", name);
 }
 
 int main(int argc, char *argv[])
 {
-	const char *port = 0;
+	const char *port = STRING(DEFAULT_PORT);
 	int v;
 	while ((v = getopt_long(argc, argv, "", opts, 0)) != -1)
 		switch (v) {
-		case 'c':
-			if (!port) port = STRING(DEFAULT_PORT_CC);
-			break;
-		case 'l':
-			if (!port) port = STRING(DEFAULT_PORT_LD);
-			break;
 		case 'p':
 			port = optarg;
 			break;

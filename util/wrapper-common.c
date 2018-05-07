@@ -27,17 +27,16 @@ void die(const char *fmt, ...)
 	exit(1);
 }
 
-static void read_config(const char **phost, const char **pport, char tool)
+static void read_config(const char **phost, const char **pport)
 {
-	int tool_is_ld = tool == 'L';
-	const char *envname = tool_is_ld ? "MKPRIVD_LD" : "MKPRIVD_CC";
+	const char *envname = "MKPRIVD";
 	const char *env = getenv(envname);
 	if (env) {
 		if (sscanf(env, "%m[^:]:%ms", phost, pport) != 2)
 			die("%s: parse error\n", envname);
 		return;
 	}
-	const char *path = tool_is_ld ? "/etc/mkprivd-ld" : "/etc/mkprivd-cc";
+	const char *path = "/etc/mkprivd";
 	FILE *f = fopen(path, "r");
 	if (f) {
 		if (fscanf(f, "%m[^:]:%ms", phost, pport) != 2)
@@ -46,14 +45,14 @@ static void read_config(const char **phost, const char **pport, char tool)
 		return;
 	}
 	*phost = "localhost";
-	*pport = tool_is_ld ? STRING(DEFAULT_PORT_LD) : STRING(DEFAULT_PORT_CC);
+	*pport = STRING(DEFAULT_PORT);
 }
 
 int daemon_connect(int argc, char *argv[], char tool)
 {
 	int sockfd;
 	const char *host, *port;
-	read_config(&host, &port, tool);
+	read_config(&host, &port);
 	struct addrinfo *r, ai = {
 		.ai_family = AF_INET,
 		.ai_socktype = SOCK_STREAM

@@ -25,8 +25,7 @@ exit 0
 
 
 cleanup() {
-  test -n "$dpid_cc" && kill $dpid_cc
-  test -n "$dpid_ld" && kill $dpid_ld
+  test -n "$dpid" && kill $dpid
 
   if [ -z "$dont_rm_real" -a -n "$gcc_real" -a -e "$gcc_real" ]; then
     mv $gcc_real $gcc
@@ -123,10 +122,8 @@ tmpdir=$(mktemp -d "$plugdir/temps.XXX")
 lddir="$tmpdir"
 
 cd $tmpdir
-$util/daemon --cc &
-dpid_cc=$!
-$util/daemon --ld &
-dpid_ld=$!
+$util/daemon &
+dpid=$!
 
 
 if shallrun 0; then
