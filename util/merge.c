@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 
 struct node {
 	enum {N_SCN, N_SYM} kind;
@@ -504,10 +505,15 @@ static void mark(struct dso *dsos, int n)
 			if (y->weak == 'C') continue;
 			if (y->weak == 'U') {
 				struct sym *u = sym_htab_lookup_only(y->name);
-				if (!u || !u->n.preorderidx) {
-					nundef++;
-					y->n.stacknext = &undefs->n;
-					undefs = y;
+				assert(u);
+				if (!y->n.preorderidx) {
+					if (/* ld_is_gold || */ !u->n.preorderidx) {
+					    nundef++;
+					    y->n.stacknext = &undefs->n;
+					    undefs = y;
+					}
+				} else {
+					assert(u->n.preorderidx);
 				}
 			} else if (!y->n.preorderidx) {
 				if (!y->defscn->preorderidx) {
