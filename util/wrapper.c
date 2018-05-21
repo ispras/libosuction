@@ -319,10 +319,7 @@ ok:;
 	}
 
 	newargv[0] = argv[0];
-	/* GCC_RUN=0 does not use ld wrapper
-	   GCC_RUN=1 normally copies argv into newargv except the exe name
-	   GCC_RUN=2 reserves the slot for our obj file */
-	memcpy(newargv + GCC_RUN, argv + 1, (argc - 1) * sizeof *argv);
+	memcpy(newargv + 1, argv + 1, (argc - 1) * sizeof *argv);
 
 #if GCC_RUN == 1
 	int sockfd = daemon_connect(argc, argv, "Linker"[0]);
@@ -339,14 +336,11 @@ ok:;
 	// But it is not enough for ld.gold, since it erroneously picks up the
 	// first visibility status it sees for a symbol and ignores the rest --
 	// i.e. our .hidden directives.
-	if (!(newargv[1] = hid_file(optstr)))
+	if (!(newargv[argc++] = hid_file(optstr)))
 		die("failure creating aux input file");
-	// Due to reserving first arg, actual argc is incremented
-	argc++;
 	newargv[argc++] = "--gc-sections";
 	newargv[argc++] = "--plugin";
 	newargv[argc++] = PLUGIN_PRIV;
-	newargv[argc++] = newargv[1];
 	snprintf(optstr + 32, sizeof optstr - 32, ":%s", MERGED_PRIVDATA);
 #endif
 	newargv[argc++] = "--plugin-opt";
