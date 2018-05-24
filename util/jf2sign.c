@@ -6,24 +6,22 @@
 #include <string.h>
 #include <stdbool.h>
 
-struct jfunction
+struct jfnode
 {
-  const char *from_name;
-  int from_arg;
-  const char *to_name;
-  int to_arg;
-};
-
-struct list_node
-{
-  struct jfunction *jf;
-  struct list_node *next;
+  struct jfunction
+  {
+    const char *from_name;
+    int from_arg;
+    const char *to_name;
+    int to_arg;
+  } *jf;
+  struct jfnode *next;
 };
 
 static bool
-has_duplicates(struct jfunction *jf, struct list_node *list)
+has_duplicates(struct jfunction *jf, struct jfnode *list)
 {
-  struct list_node *iter;
+  struct jfnode *iter;
   for (iter = list; iter; iter = iter->next)
     if (!strcmp(jf->from_name, iter->jf->from_name)
 	&& jf->from_arg == iter->jf->from_arg)
@@ -31,12 +29,12 @@ has_duplicates(struct jfunction *jf, struct list_node *list)
   return false;
 }
 
-static struct list_node *
-create_list_node(const char *from_name, int from_arg,
+static struct jfnode *
+create_jfnode(const char *from_name, int from_arg,
 		 const char *to_name, int to_arg,
-		 struct list_node *next)
+		 struct jfnode *next)
 {
-  struct list_node *node = calloc(1, sizeof *node);
+  struct jfnode *node = calloc(1, sizeof *node);
   node->jf = calloc(1, sizeof *node->jf);
   node->jf->from_name = from_name;
   node->jf->from_arg = from_arg;
@@ -46,38 +44,38 @@ create_list_node(const char *from_name, int from_arg,
   return node;
 }
 
-static struct list_node *
+static struct jfnode *
 read_jf(FILE *f)
 {
-  struct list_node *res = NULL;
+  struct jfnode *res = NULL;
   char *from_name, *to_name;
   int from_arg, to_arg;
   while (fscanf(f, "%ms %d %ms %d", &from_name, &from_arg, &to_name, &to_arg) != EOF)
-      res = create_list_node(from_name, from_arg, to_name, to_arg, res);
+      res = create_jfnode(from_name, from_arg, to_name, to_arg, res);
   return res;
 }
 
-static struct list_node *
+static struct jfnode *
 read_base(FILE *f)
 {
-  struct list_node *res = NULL;
+  struct jfnode *res = NULL;
   char *from_name;
   int from_arg;
   while (fscanf(f, "%ms %d", &from_name, &from_arg) != EOF)
-      res = create_list_node(from_name, from_arg, NULL, 0, res);
+      res = create_jfnode(from_name, from_arg, NULL, 0, res);
   return res;
 }
 
-static struct list_node *
-find_closure(struct list_node *start, struct list_node *pool)
+static struct jfnode *
+find_closure(struct jfnode *start, struct jfnode *pool)
 {
-  struct list_node *current = start, *next = NULL, *output = NULL;
+  struct jfnode *current = start, *next = NULL, *output = NULL;
   while (current)
     {
-      struct list_node *temp;
+      struct jfnode *temp;
       for (temp = pool; temp; temp = temp->next)
 	{
-	  struct list_node *cur_iter;
+	  struct jfnode *cur_iter;
 	  for (cur_iter = current; cur_iter; cur_iter = cur_iter->next)
 	    {
 	      if (!strcmp (temp->jf->to_name, cur_iter->jf->from_name)
@@ -90,10 +88,11 @@ find_closure(struct list_node *start, struct list_node *pool)
 		    break;
 
 		  // Include jf to dlsym signatures
-		  struct list_node *nw = calloc(1, sizeof *nw);
-		  nw->jf = temp->jf;
-		  nw->next = next;
-		  next = nw;
+		  next = create_jfnode(temp->jf->from_name,
+		      temp->jf->from_arg,
+		      temp->jf->to_name,
+		      temp->jf->to_arg,
+		      next);
 		  break;
 		}
 	    }
@@ -106,7 +105,7 @@ find_closure(struct list_node *start, struct list_node *pool)
 	 been updated. */
       if (output)
 	{
-	  struct list_node *last = current;
+	  struct jfnode *last = current;
 	  while (last->next)
 	    last = last->next;
 	  last->next = output;
@@ -120,7 +119,7 @@ find_closure(struct list_node *start, struct list_node *pool)
 
 int main (int argc, char *argv[])
 {
-  struct list_node *base_dlsym, *root, *output;
+  struct jfnode *base_dlsym, *root, *output;
   FILE *f;
 
   if (argc < 3)
@@ -150,22 +149,22 @@ int main (int argc, char *argv[])
   // Output results
   FILE *outf = argc < 4 ? stdout : fopen(argv[3], "w");
 
-  for (struct list_node *iter = output; iter; iter = iter->next)
+  for (struct jfnode *iter = output; iter; iter = iter->next)
     fprintf(outf, "%s %d\n", iter->jf->from_name, iter->jf->from_arg);
 
   if (argc >= 4)
     fclose(outf);
 
   // Free memory
-  for (struct list_node *iter = root, *tmp; iter; iter = tmp) {
+  for (struct jfnode *iter = root, *tmp; iter; iter = tmp) {
     tmp = iter->next;
     free(iter->jf);
     free(iter);
   }
 
-  // All jfuncs are already freed
-  for (struct list_node *iter = output, *tmp; iter; iter = tmp) {
+  for (struct jfnode *iter = output, *tmp; iter; iter = tmp) {
     tmp = iter->next;
+    free(iter->jf);
     free(iter);
   }
 
