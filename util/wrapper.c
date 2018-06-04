@@ -12,6 +12,7 @@
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <sys/wait.h>
+#include <sys/socket.h>
 
 #include <ar.h>
 #include <elf.h>
@@ -360,6 +361,16 @@ int main(int argc, char *argv[])
 			goto ok;
 	die("bad wrapped command\n");
 ok:;
+	/* Need to shutdown GCC socket to avoid deadlock in daemon. */
+	const char *socket = getenv(GCC_SOCKFD);
+	if (socket) {
+		int sockfd;
+		sscanf(socket, "%d", &sockfd);
+		if (shutdown(sockfd, SHUT_RDWR) < 0)
+			die("shutdown error: %s", strerror(errno));
+		unsetenv(GCC_SOCKFD);
+	}
+
 	struct exp_args exargs = expand_args(argc, argv);
 	int exargc = exargs.argc;
 	char **exargv = exargs.argv;

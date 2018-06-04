@@ -38,7 +38,12 @@ int main(int argc, char *argv[])
 #elif GCC_RUN == 1
 	int sockfd = daemon_connect (argc, argv, "Compiler"[0]);
 #endif
-
+#if GCC_RUN < 2
+	/* Need to signal that GCC keeps a socket descriptor. */
+	char socket[12];
+	sprintf(socket, "%d", sockfd);
+	setenv(GCC_SOCKFD, socket, 1);
+#endif
 	char *fullname = (char *)getauxval(AT_EXECFN);
 	char origcmd[strlen (fullname) + sizeof ORIG_CMD_SUFFIX];
 	strcpy(origcmd, fullname);
