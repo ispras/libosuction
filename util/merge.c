@@ -328,6 +328,7 @@ input(struct dso *dso, FILE *f)
 	for (y = dso->sym; y < dso->sym + dso->nsym; y++)
 		for (int i = 0; i < y->nrevdeps; i++) {
 			s = y->revdeps[i];
+			/* XXX here we assume the linker saw -Bsymbolic. */
 			s->symdeps[0] = y;
 			s->symdeps++;
 		}
