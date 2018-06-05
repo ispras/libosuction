@@ -60,6 +60,7 @@ gcc-plug/dlsym/libplug.so: $(addprefix gcc-plug/dlsym/, plug.o \
 $(GCC_PLUG_LIBS):
 	$(CXX) $(CPPFLAGS) -shared -o $@ $^
 
+$(MERGE): util/deps-graph.o
 $(DAEMON): CFLAGS += -fopenmp
 $(GCC_WRAP): util/gcc-wrapper-% : $(WRAP_COMMON) util/gcc-wrapper.c
 $(LD_WRAP): util/wrapper-% : $(WRAP_COMMON) util/wrapper.c
