@@ -62,6 +62,7 @@ $(GCC_PLUG_LIBS):
 
 $(MERGE): util/deps-graph.o
 $(DAEMON): CFLAGS += -fopenmp
+$(DAEMON): util/deps-graph.o
 $(GCC_WRAP): util/gcc-wrapper-% : $(WRAP_COMMON) util/gcc-wrapper.c
 $(LD_WRAP): util/wrapper-% : $(WRAP_COMMON) util/wrapper.c
 $(WRAPPERS):

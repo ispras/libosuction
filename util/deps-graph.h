@@ -75,7 +75,7 @@ struct htab {
 unsigned sym_hash(const char *name);
 void htab_expand(struct htab *htab);
 void input_dyndeps(FILE *f);
-void input(struct dso *dso, FILE *f);
+int input(struct dso *dso, FILE *f);
 void merge(struct dso *dsos, int n);
 void printmark(FILE *f, struct dso *dso);
 

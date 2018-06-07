@@ -204,9 +204,9 @@ void exec_child(char *cmd, char **argv)
 
 #if GCC_RUN == 2
 static void
-create_hid_file (const char *linkid, const char *input, int outputfd)
+create_hid_file (const char *linkid, int inputfd, int outputfd)
 {
-	FILE *in = fopen(input, "r");
+	FILE *in = fdopen(inputfd, "r");
 	if (!in)
 		die("Could not open input file");
 
@@ -248,7 +248,7 @@ create_hid_file (const char *linkid, const char *input, int outputfd)
 		goto done;
 	}
 
-	// die("Could not find linkid %.32s\n", linkid);
+	die("Could not find linkid %.32s\n", linkid);
 
 done:
 	fclose(in);
@@ -256,7 +256,7 @@ done:
 }
 
 static char *
-hid_file(const char *linkid)
+hid_file(const char *linkid, int sockfd)
 {
 	static char tmpl[] = "/tmp/\0_23456789abcdef0123456789abcdef-XXXXXX.o";
 	memcpy(tmpl + strlen(tmpl), linkid, 32);
@@ -270,7 +270,7 @@ hid_file(const char *linkid)
 	static char objname[] = "/proc/self/fd/\0_23456789";
 	snprintf(objname + strlen(objname), 11, "%u", 0u+objfd);
 
-	create_hid_file(linkid, MERGED_PRIVDATA, asmfd);
+	create_hid_file(linkid, sockfd, asmfd);
 
 	char *gcc_argv[] = {"gcc", "-c", tmpl, "-o", objname, 0};
 	exec_child("/usr/bin/gcc", gcc_argv);
@@ -417,22 +417,26 @@ ok:;
 		newargv[argc++] = "--gc-sections";
 	newargv[argc++] = "--plugin";
 	newargv[argc++] = PLUGIN;
+	newargv[argc++] = "--plugin-opt";
+	newargv[argc++] = optstr;
 #else
+	int sockfd = daemon_connect(argc, argv, "Eliminator"[0]);
+	FILE *f;
+	if (!(f = fdopen(sockfd, "w"))
+	    || fprintf(f, "%.32s", optstr) < 0
+	    || fflush(f) != 0)
+		die("linkid write error\n");
 	// TODO: The correct way is to place the aux file last on the linker's
 	// command line, since undefined references in the aux file at the
 	// beginning may affect extraction of object files from archives.
 	// But it is not enough for ld.gold, since it erroneously picks up the
 	// first visibility status it sees for a symbol and ignores the rest --
 	// i.e. our .hidden directives.
-	if (!(newargv[argc++] = hid_file(optstr)))
+	if (!(newargv[argc++] = hid_file(optstr, dup(sockfd))))
 		die("failure creating aux input file");
 	newargv[argc++] = "--gc-sections";
-	newargv[argc++] = "--plugin";
-	newargv[argc++] = PLUGIN_PRIV;
-	snprintf(optstr + 32, sizeof optstr - 32, ":%s", MERGED_PRIVDATA);
+	fclose(f);
 #endif
-	newargv[argc++] = "--plugin-opt";
-	newargv[argc++] = optstr;
 	newargv[argc++] = 0;
 exec:;
 	if (exargs.resp_file) {

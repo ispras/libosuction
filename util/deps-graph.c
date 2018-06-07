@@ -193,12 +193,13 @@ section_is_extab_for(const char *xname, const char *tname)
 	}
 	return 0;
 }
-void
+int
 input(struct dso *dso, FILE *f)
 {
 	char is_dso;
-	fscanf(f, " %c %d %d %ms %ms %ms", &is_dso, &dso->nobj, &dso->nscn,
-	       &dso->name, &dso->entrypoint, &dso->linkid);
+	if (fscanf(f, " %c %d %d %ms %ms %ms", &is_dso, &dso->nobj, &dso->nscn,
+		   &dso->name, &dso->entrypoint, &dso->linkid) != 6)
+		return 1;
 	dso->is_dso = is_dso;
 	struct obj *o = dso->obj = calloc(dso->nobj, sizeof *dso->obj);
 	struct scn *s = dso->scn = calloc(dso->nscn, sizeof *dso->scn);
@@ -314,6 +315,7 @@ input(struct dso *dso, FILE *f)
 		for (int i = 0; i < s->nsymdeps; i++)
 			*p++ = (void *)s->symdeps[i];
 	}
+	return 0;
 }
 
 static void scc_1(struct node *n)
