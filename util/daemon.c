@@ -19,40 +19,191 @@
 #define STRING_(n) #n
 #define STRING(n) STRING_(n)
 
+struct gccsym {
+	int cnt;
+	struct sym *sym;
+	struct gccsym *next;
+};
+
+struct dso_entry {
+	struct dso *dso;
+	int ndups;
+	struct dsolist {
+		struct dso *value;
+		struct dsolist *next;
+	} *dups;
+};
+
 static struct htab dsos_htab, gccsym_htab;
 static int run2ready = 0;
 
-static struct dso **dsos_htab_lookup(const char *linkid)
+static struct dso_entry **dsos_htab_lookup(const char *linkid)
 {
 	if (dsos_htab.used * 3 >= dsos_htab.size)
 		htab_expand(&dsos_htab);
 	unsigned hash = sym_hash(linkid);
 	for (size_t i = hash; ; i++) {
 		i &= dsos_htab.size - 1;
-		struct dso **ptr = (void *)(dsos_htab.elts + i);
+		struct dso_entry **ptr = (void *)(dsos_htab.elts + i);
 		if (!*ptr) {
 			dsos_htab.hashes[i] = hash;
 			return ptr;
 		}
 		if (dsos_htab.hashes[i] == hash
-		    && !strcmp(linkid, (*ptr)->linkid))
+		    && !strcmp(linkid, (*ptr)->dso->linkid))
 			return ptr;
 	}
 }
 
-static struct dso *dsos_htab_lookup_only(const char *linkid)
+static struct dso_entry *dsos_htab_lookup_only(const char *linkid)
 {
 	if (!dsos_htab.used)
 		return 0;
 	unsigned hash = sym_hash(linkid);
 	for (size_t i = hash; ; i++) {
 		i &= dsos_htab.size - 1;
-		struct dso *dso = dsos_htab.elts[i];
-		if (!dso)
+		struct dso_entry *dso_entry = dsos_htab.elts[i];
+		if (!dso_entry)
 			return 0;
 		if (dsos_htab.hashes[i] == hash
-		    && !strcmp(linkid, dso->linkid))
-			return dso;
+		    && !strcmp(linkid, dso_entry->dso->linkid))
+			return dso_entry;
+	}
+}
+
+static void add_dso(FILE *f)
+{
+	struct dso *dso = calloc(1, sizeof (struct dso));
+	if (input(dso, f))
+		return;
+
+	struct dso_entry **entry = dsos_htab_lookup(dso->linkid);
+	if (*entry) {
+		struct dsolist *dup = calloc(1, sizeof *dup);
+		dup->value = dso;
+		dup->next = (*entry)->dups;
+		(*entry)->dups = dup;
+		(*entry)->ndups++;
+	} else {
+		struct dso_entry *new_entry = calloc(1, sizeof *new_entry);
+		new_entry->dso = dso;
+		*entry = new_entry;
+		dsos_htab.used++;
+	}
+}
+
+static struct gccsym **gccsym_htab_lookup(struct sym *sym)
+{
+	if (gccsym_htab.used * 3 >= gccsym_htab.size)
+		htab_expand(&gccsym_htab);
+	struct obj *obj = ((struct scn *)sym->defscn)->objptr->srcidmain;
+	unsigned hash = sym_hash(obj->srcid);
+	for (size_t i = hash; ; i++) {
+		i &= gccsym_htab.size - 1;
+		struct gccsym **ptr = (void *)(gccsym_htab.elts + i);
+		if (!*ptr) {
+			gccsym_htab.hashes[i] = hash;
+			return ptr;
+		}
+		struct obj *ptrobj = ((struct scn *)(*ptr)->sym->defscn)->objptr->srcidmain;
+		if (gccsym_htab.hashes[i] == hash
+		    && !strncmp(obj->srcid, ptrobj->srcid, 32))
+			return ptr;
+	}
+}
+
+static struct gccsym *gccsym_htab_lookup_only(const char *srcid)
+{
+	if (!gccsym_htab.used)
+		return 0;
+	unsigned hash = sym_hash(srcid);
+	for (size_t i = hash; ; i++) {
+		i &= gccsym_htab.size - 1;
+		struct gccsym *gccsym = gccsym_htab.elts[i];
+		if (!gccsym)
+			return 0;
+		struct obj *obj = ((struct scn *)gccsym->sym->defscn)->objptr->srcidmain;
+		if (gccsym_htab.hashes[i] == hash
+		    && !strncmp(srcid, obj->srcid, 32))
+			return gccsym;
+	}
+}
+
+static void add_gccsym(struct sym *sym)
+{
+	struct gccsym **gccsymp = gccsym_htab_lookup(sym);
+	struct gccsym **prev = gccsymp, *curr = *gccsymp;
+	while (curr) {
+		if (!strcmp(curr->sym->name, sym->name)) {
+			curr->cnt++;
+			return;
+		}
+		prev = &curr->next;
+		curr = curr->next;
+	}
+	struct gccsym *gccsym = calloc(1, sizeof *gccsym);
+	gccsym->sym = sym;
+	gccsym->cnt = 1;
+	*prev = gccsym;
+	gccsym_htab.used++;
+}
+
+static void gc_gccsym()
+{
+	for (int i = 0; i < gccsym_htab.size; i++) {
+		if (!gccsym_htab.elts[i])
+			continue;
+		struct gccsym **pp = (struct gccsym**)(gccsym_htab.elts + i);
+		struct gccsym *entry = gccsym_htab.elts[i];
+		struct obj *obj = ((struct scn *)entry->sym->defscn)->objptr->srcidmain;
+		while(entry) {
+			if (obj->srcidcnt == entry->cnt) {
+				pp = &entry->next;
+				entry = entry->next;
+				continue;
+			}
+			assert(entry->cnt < obj->srcidcnt);
+
+			*pp = entry->next;
+			free(entry);
+			entry = *pp;
+		}
+	}
+}
+
+static void amend_output(struct dso *dso)
+{
+	struct mark *mark = dso->mark;
+	if (!mark)
+		return;
+
+	for (struct sym *y = mark->elims; y; y = (void*)y->n.stacknext)
+		add_gccsym(y);
+	for (struct sym *y = mark->locs; y; y = (void*)y->n.stacknext)
+		add_gccsym(y);
+	for (struct sym *y = mark->hids; y; y = (void*)y->n.stacknext)
+		add_gccsym(y);
+}
+
+static void printgccsym(FILE *f, struct gccsym* gccsym)
+{
+	if (!gccsym) {
+		fprintf(f, "0 0 0\n\n\n");
+		return;
+	}
+	struct obj *obj = ((struct scn *)gccsym->sym->defscn)->objptr;
+	const char *t, *objname = obj->path;
+	if ((t = strrchr(objname, '/'))) objname = t+1;
+
+	int n = 0;
+	struct gccsym* iter = gccsym;
+	while(iter) n++, iter = iter->next;
+
+
+	fprintf(f, "%d %d %d\n\n\n", 0, 0, n);
+	while(gccsym) {
+		fprintf(f, "%s:%s:%s\n", objname, obj->srcid, gccsym->sym->name);
+		gccsym = gccsym->next;
 	}
 }
 
@@ -62,6 +213,12 @@ static void prepare_run2(char **forces, int nforce)
 		return;
 
 	int ndso = dsos_htab.used + nforce;
+	for (int i = 0; i < dsos_htab.size; i++) {
+		if (dsos_htab.elts[i]) {
+			struct dso_entry *entry = dsos_htab.elts[i];
+			ndso += entry->ndups;
+		}
+	}
 	struct dso dsos[ndso];
 	int dsoind;
 	/* Add force-deps files */
@@ -73,9 +230,15 @@ static void prepare_run2(char **forces, int nforce)
 	/* Add dsos from hash table */
 	for (int i = 0, j = dsoind; i < dsos_htab.size; i++) {
 		if (dsos_htab.elts[i]) {
-			struct dso *dso = dsos_htab.elts[i];
+			struct dso_entry *entry = dsos_htab.elts[i];
 			assert (j < ndso);
-			dsos[j++] = *dso;
+			dsos[j++] = *entry->dso;
+			struct dsolist *iter = entry->dups;
+			while (iter) {
+				assert (j < ndso);
+				dsos[j++] = *iter->value;
+				iter = iter->next;
+			}
 		}
 	}
 	/* Merge utility */
@@ -87,26 +250,26 @@ static void prepare_run2(char **forces, int nforce)
 	/* Update hash table */
 	for (int i = 0, j = dsoind; i < dsos_htab.size; i++) {
 		if (dsos_htab.elts[i]) {
-			struct dso *dso = dsos_htab.elts[i];
-			dso->mark = dsos[j++].mark;
+			struct dso_entry *entry = dsos_htab.elts[i];
+			entry->dso->mark = dsos[j++].mark;
+			struct dsolist *iter = entry->dups;
+			while (iter) {
+				iter->value->mark = dsos[j++].mark;
+				iter = iter->next;
+			}
 		}
 	}
-	run2ready = 1;
-}
-
-static void add_dso(FILE *f)
-{
-	struct dso *deps = calloc(1, sizeof (struct dso));
-	if (input(deps, f))
-		return;
-
-	struct dso **depsp = dsos_htab_lookup(deps->linkid);
-	if (*depsp) {
-		free (deps);
-	} else {
-		*depsp = deps;
-		dsos_htab.used++;
+	/* Amend deps-graph output for gcc plugin */
+	for (struct dso *dso = dsos + nforce; dso < dsos + ndso; dso++) {
+		amend_output(dso);
 	}
+	gc_gccsym();
+	output = fopen("merged.vis.gcc", "w");
+	for (int i = 0; i < gccsym_htab.size; i++)
+		printgccsym(output, gccsym_htab.elts[i]);
+	fclose(output);
+
+	run2ready = 1;
 }
 
 static char *readfile(FILE *f, size_t *size)
@@ -292,6 +455,19 @@ int main(int argc, char *argv[])
 		    if (dso) {
 			    fout = fdopen(dup(peerfd), "w");
 			    printmark(fout, dso);
+			    fclose(fout);
+		    }
+		    break;
+		  case 'S': /* Symbol Hider */
+		    #pragma omp critical (merge)
+		    prepare_run2(argv + force_start_idx, nforce);
+		    if (fread(md5hash, 32, 1, fin) != 1)
+			    fprintf(stderr, "linkid read error\n");
+		    md5hash[32] = '\0';
+		    while (fread(md5hash, 32, 1, fin) != 1) {
+			    fout = fdopen(dup(peerfd), "w");
+			    struct gccsym *gccsym = gccsym_htab_lookup_only(md5hash);
+			    printgccsym(fout, gccsym);
 			    fclose(fout);
 		    }
 		    break;
