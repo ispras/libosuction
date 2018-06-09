@@ -122,6 +122,7 @@ sym_htab_lookup(const char *name)
 			return syms_htab.syms + i;
 	}
 }
+__attribute__((unused))
 static struct sym *
 sym_htab_lookup_only(const char *name)
 {
@@ -188,6 +189,7 @@ dg_print_rels(FILE *f, const struct objfile *o)
 		}
 	}
 }
+__attribute__((unused))
 static void
 dg_print_all_graphviz(FILE *f)
 {
@@ -321,6 +323,7 @@ dg_rel_init(struct rel *r, struct section *scn, struct sym *sym)
 	r->nextrel = sym->firstrel;
 	sym->firstrel = r;
 }
+__attribute__((unused))
 static void
 dg_object_end()
 {

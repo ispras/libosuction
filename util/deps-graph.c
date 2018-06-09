@@ -379,6 +379,7 @@ static void scc_2(struct node *n, int *w, int g)
 	}
 }
 
+__attribute__((unused))
 static void scc(struct dso *dso)
 {
 #if 1

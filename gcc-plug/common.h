@@ -4,6 +4,7 @@
 #ifndef GCC_PLUG_COMMON_H
 #define GCC_PLUG_COMMON_H
 
+__attribute__((unused))
 static void
 blind_strings (char *buf, size_t size)
 {
