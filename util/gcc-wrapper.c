@@ -16,7 +16,7 @@
 #define SIGNDLSYM "dlsym-signs"
 #define DLSYMPLUG       PLUGDIR LIBDLSYM ".so"
 #define MKPRIVPLUG      PLUGDIR LIBMKPRIV ".so"
-#define MERGED_GCC_DATA AUXDIR "merged.vis.gcc"
+#define IGNORE_PLUG_OPT	AUXDIR "ignored-for-plugopt"
 #define DLSYMIN         AUXDIR SIGNDLSYM ".txt"
 
 #if (!(GCC_RUN >= 0 || GCC_RUN <= 2))
@@ -37,13 +37,14 @@ int main(int argc, char *argv[])
 	int sockfd = daemon_connect (argc, argv, "PreCompiler"[0]);
 #elif GCC_RUN == 1
 	int sockfd = daemon_connect (argc, argv, "Compiler"[0]);
+#else
+	int sockfd = daemon_connect(argc, argv, "SymbolHider"[0]);
 #endif
-#if GCC_RUN < 2
 	/* Need to signal that GCC keeps a socket descriptor. */
 	char socket[12];
 	sprintf(socket, "%d", sockfd);
 	setenv(GCC_SOCKFD, socket, 1);
-#endif
+
 	char *fullname = (char *)getauxval(AT_EXECFN);
 	char origcmd[strlen (fullname) + sizeof ORIG_CMD_SUFFIX];
 	strcpy(origcmd, fullname);
@@ -54,14 +55,13 @@ int main(int argc, char *argv[])
 	for (int i = 0; i < argc; i++)
 		newargv[newargc++] = maybe_strip_lto(argv[i]);
 
-#if GCC_RUN == 0
 	char optstr[64];
+#if GCC_RUN == 0
 	snprintf(optstr, sizeof optstr, "-fplugin-arg-" LIBDLSYM "-jfout=%d", sockfd);
 	newargv[newargc++] = "-fplugin=" DLSYMPLUG;
 	newargv[newargc++] = "-fplugin-arg-" LIBDLSYM "-run=0";
 	newargv[newargc++] = optstr;
 #elif GCC_RUN == 1
-	char optstr[64];
 	snprintf(optstr, sizeof optstr, "-fplugin-arg-" LIBDLSYM "-symout=%d", sockfd);
 	newargv[newargc++] = "-fplugin=" DLSYMPLUG;
 	newargv[newargc++] = "-fplugin-arg-" LIBDLSYM "-in=" DLSYMIN;
@@ -70,8 +70,13 @@ int main(int argc, char *argv[])
 	newargv[newargc++] = "-fplugin-arg-" LIBMKPRIV "-run=1";
 #else
 	newargv[newargc++] = "-fplugin=" MKPRIVPLUG;
-	newargv[newargc++] = "-fplugin-arg-" LIBMKPRIV "-run=2";
-	newargv[newargc++] = "-fplugin-arg-" LIBMKPRIV "-fname=" MERGED_GCC_DATA;
+	if (access(IGNORE_PLUG_OPT, F_OK)) {
+		snprintf(optstr, sizeof optstr, "-fplugin-arg-" LIBMKPRIV "-fd=%d", sockfd);
+		newargv[newargc++] = "-fplugin-arg-" LIBMKPRIV "-run=2";
+		newargv[newargc++] = optstr;
+	} else {
+		newargv[newargc++] = "-fplugin-arg-" LIBMKPRIV "-run=1";
+	}
 #endif
 #if GCC_RUN < 2 || SECTIONS
 	newargv[newargc++] = "-ffunction-sections";

@@ -85,12 +85,12 @@ class pass_hide_globally_invisible : public simple_ipa_opt_pass
 public:
   pass_hide_globally_invisible (gcc::context *ctxt)
     : simple_ipa_opt_pass (pass_data_hide_globally_invisible, ctxt),
-    fname (NULL)
+    fd (-1)
   {}
 
   virtual unsigned int execute (_EXECUTE_ARGS);
 
-  void set_fname (const char *fname_) { fname = fname_; }
+  void set_fd (const int fd_) { fd = fd_; }
 
 private:
   bool eliminate_p (symtab_node *node);
@@ -100,7 +100,7 @@ private:
   bool localize_comdat (symtab_node *node);
   void do_localize_node (symtab_node *node);
 
-  const char *fname; /* File to read visibility modifications info from.  */
+  int fd; /* File descriptor to read visibility modifications info from.  */
   splay_tree elim_nodes;
   splay_tree loc_nodes;
   splay_tree hid_nodes;
@@ -137,46 +137,50 @@ void
 read_decl_names (FILE *f, int num_nodes, splay_tree nodes)
 {
   char *symname;
-  char srcid[32 + 1];
   int i;
   char c1 = 0, c2 = 0;
 
   for (i = 0; i < num_nodes; i++)
     {
-      if ((fscanf (f, "%*[\n \t]%*[^:]%c%32[^:]%c%ms",
-                   &c1, &srcid, &c2, &symname) != 4)
+      if ((fscanf (f, "%*[\n \t]%*[^:]%c%*32[^:]%c%ms",
+                   &c1, &c2, &symname) != 3)
           || c1 != ':' || c2 != ':')
         fatal_error ("error reading elim/loc/hid symbol names");
 
-      if (!strncmp (md5str, srcid, 32))
-	  splay_tree_insert (nodes, (splay_tree_key) symname, 0);
+      splay_tree_insert (nodes, (splay_tree_key) symname, 0);
     }
 }
 
 void
 pass_hide_globally_invisible::read_vis_changes (void)
 {
-  FILE *f;
+  FILE *fin, *fout;
   int nelim, nloc, nhid;
 
-  f = fopen (fname, "r");
-  if (!f)
-    fatal_error ("cannot open %s", fname);
+  if (!(fout = fdopen(fd, "w"))
+      || fprintf(fout, "%.32s", md5str) < 0
+      || fflush(fout) != 0)
+    fatal_error ("cannot open fd %d to write: %s", fd, xstrerror (errno));
 
-  fscanf (f, "%d %d %d", &nelim, &nloc, &nhid);
+  fin = fdopen(dup(fd), "r");
+  if (!fin)
+    fatal_error ("cannot open fd %d to read: %s", fd, xstrerror (errno));
 
-  read_decl_names (f, nelim, elim_nodes);
+  fscanf (fin, "%d %d %d", &nelim, &nloc, &nhid);
+
+  read_decl_names (fin, nelim, elim_nodes);
 
   /*  Act conservatively if there can possibly be an alias defined via
       `.symver`; if we localize the symbol such an alias will become local
       as well.  We can't even make it hidden for the same reason.  */
   if (!asm_nodes)
     {
-      read_decl_names (f, nloc, loc_nodes);
-      read_decl_names (f, nhid, hid_nodes);
+      read_decl_names (fin, nloc, loc_nodes);
+      read_decl_names (fin, nhid, hid_nodes);
     }
 
-  fclose (f);
+  fclose (fin);
+  fclose (fout);
 }
 
 void
@@ -304,10 +308,10 @@ pass_hide_globally_invisible::execute (_EXECUTE_ARGS)
 }
 
 simple_ipa_opt_pass *
-make_pass_hide_globally_invisible (gcc::context *ctxt, const char *filename)
+make_pass_hide_globally_invisible (gcc::context *ctxt, const int fd)
 {
   pass_hide_globally_invisible *pass = new pass_hide_globally_invisible (ctxt);
-  pass->set_fname (filename);
+  pass->set_fd (fd);
   return pass;
 }
 
@@ -351,7 +355,7 @@ compmd5 (void *, void *)
 
   flag_dump_noaddr = save_noaddr;
 
-  for (int i = 0; i < save_decoded_options_count; i++)
+  for (size_t i = 0; i < save_decoded_options_count; i++)
     switch (save_decoded_options[i].opt_index)
       {
       default:
@@ -390,9 +394,8 @@ int
 plugin_init (plugin_name_args *i, plugin_gcc_version *v)
 {
   plugin_argument *arg;
-  plugin_init_func check = plugin_init;
   struct register_pass_info pass_info;
-  char *fname = NULL;
+  int fd = -1;
   long gcc_run = 0;
 
   gcc_version.configuration_arguments = v->configuration_arguments;
@@ -410,8 +413,8 @@ plugin_init (plugin_name_args *i, plugin_gcc_version *v)
     fatal_error ("the plugin does not make provision for -fleading-underscore");
 
   for (arg = i->argv; arg < i->argv + i->argc; arg++)
-    if (!strcmp (arg->key, "fname"))
-      fname = arg->value;
+    if (!strcmp (arg->key, "fd"))
+      sscanf (arg->value, "%d", &fd);
     else if (!strcmp (arg->key, "run"))
       {
         errno = 0;
@@ -421,14 +424,14 @@ plugin_init (plugin_name_args *i, plugin_gcc_version *v)
       }
     else
       fatal_error ("unknown plugin option '%s'", arg->key);
-  if (gcc_run == 2 && !fname)
-    fatal_error ("file with visibility modifications not specified "
-		 "(pass 'fname' argument to the plugin)");
+  if (gcc_run == 2 && fd < 0)
+    fatal_error ("file descriptor with visibility modifications not specified "
+		 "(pass 'fd' argument to the plugin)");
   if (!(gcc_run == 1 || gcc_run == 2))
   bad_gcc_run:
     fatal_error ("pass run = 1 or 2 to the plugin");
 
-  pass_info.pass = make_pass_hide_globally_invisible (g, fname);
+  pass_info.pass = make_pass_hide_globally_invisible (g, fd);
   pass_info.reference_pass_name = "visibility";
   pass_info.ref_pass_instance_number = 1;
   pass_info.pos_op = PASS_POS_INSERT_BEFORE;
