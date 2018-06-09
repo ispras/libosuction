@@ -60,6 +60,7 @@ gcc-plug/dlsym/libplug.so: $(addprefix gcc-plug/dlsym/, plug.o \
 $(GCC_PLUG_LIBS):
 	$(CXX) $(CPPFLAGS) -shared -o $@ $^
 
+$(JF2SIGN): util/jfuncs.o
 $(MERGE): util/deps-graph.o
 $(DAEMON): CFLAGS += -fopenmp
 $(DAEMON): util/deps-graph.o
