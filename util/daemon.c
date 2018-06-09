@@ -448,23 +448,23 @@ int main(int argc, char *argv[])
 		    #pragma omp critical (merge)
 		    prepare_run2(argv + force_start_idx, nforce);
 
-		    if (fread(md5hash, 32, 1, fin) != 1)
+		    if (fread(md5hash, 32, 1, fin) != 1) {
 			    fprintf(stderr, "linkid read error\n");
+			    break;
+		    }
 		    md5hash[32] = '\0';
-		    struct dso *dso = dsos_htab_lookup_only(md5hash);
-		    if (dso) {
+		    struct dso_entry *entry = dsos_htab_lookup_only(md5hash);
+		    if (entry) {
 			    fout = fdopen(dup(peerfd), "w");
-			    printmark(fout, dso);
+			    printmark(fout, entry->dso);
 			    fclose(fout);
 		    }
 		    break;
 		  case 'S': /* Symbol Hider */
 		    #pragma omp critical (merge)
 		    prepare_run2(argv + force_start_idx, nforce);
-		    if (fread(md5hash, 32, 1, fin) != 1)
-			    fprintf(stderr, "linkid read error\n");
 		    md5hash[32] = '\0';
-		    while (fread(md5hash, 32, 1, fin) != 1) {
+		    while (fread(md5hash, 32, 1, fin) == 1) {
 			    fout = fdopen(dup(peerfd), "w");
 			    struct gccsym *gccsym = gccsym_htab_lookup_only(md5hash);
 			    printgccsym(fout, gccsym);
