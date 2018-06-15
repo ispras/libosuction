@@ -16,8 +16,8 @@ static bool has_duplicates(struct jfunction *jf, struct jfnode *list)
 }
 
 struct jfnode *create_jfnode(const char *from_name, int from_arg,
-    const char *to_name, int to_arg,
-    struct jfnode *next)
+			     const char *to_name, int to_arg,
+			     struct jfnode *next)
 {
   struct jfnode *node = calloc(1, sizeof *node);
   node->jf = calloc(1, sizeof *node->jf);
@@ -29,14 +29,12 @@ struct jfnode *create_jfnode(const char *from_name, int from_arg,
   return node;
 }
 
-struct jfnode *read_jf(FILE *f)
+void read_jf(FILE *f, struct jfnode **list)
 {
-  struct jfnode *res = NULL;
   char *from_name, *to_name;
   int from_arg, to_arg;
   while (fscanf(f, "%ms %d %ms %d", &from_name, &from_arg, &to_name, &to_arg) == 4)
-    res = create_jfnode(from_name, from_arg, to_name, to_arg, res);
-  return res;
+    *list = create_jfnode(from_name, from_arg, to_name, to_arg, *list);
 }
 
 struct jfnode *read_base(FILE *f)

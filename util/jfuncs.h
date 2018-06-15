@@ -16,7 +16,7 @@ struct jfnode
 struct jfnode *create_jfnode(const char *from_name, int from_arg,
 			     const char *to_name, int to_arg,
 			     struct jfnode *next);
-struct jfnode *read_jf(FILE *f);
+void read_jf(FILE *f, struct jfnode **list);
 struct jfnode *read_base(FILE *f);
 struct jfnode *find_closure(struct jfnode *start, struct jfnode *pool);
 void print_jflist(FILE *f, struct jfnode *list);

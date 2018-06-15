@@ -8,7 +8,7 @@
 
 int main (int argc, char *argv[])
 {
-  struct jfnode *base_dlsym, *root, *output;
+  struct jfnode *base_dlsym, *root = NULL, *output;
   FILE *f;
 
   if (argc < 3) {
@@ -19,22 +19,22 @@ int main (int argc, char *argv[])
     return 1;
   }
 
-  // Read jump functions
+  /* Read jump functions */
   f = fopen(argv[1], "r");
   if (!f) return 1;
-  root = read_jf(f);
+  read_jf(f, &root);
   fclose(f);
 
-  // Read initial calls
+  /* Read initial calls */
   f = fopen(argv[2], "r");
   if (!f) return 1;
   base_dlsym = read_base(f);
   fclose(f);
 
-  // Match jump function chains
+  /* Match jump function chains */
   output = find_closure(base_dlsym, root);
 
-  // Output results
+  /* Output results */
   FILE *outf = argc < 4 ? stdout : fopen(argv[3], "w");
 
   print_jflist(outf, output);
