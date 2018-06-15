@@ -14,6 +14,7 @@
 #include <netdb.h>
 
 #include "daemon-ports.h"
+#include "jfuncs.h"
 #include "deps-graph.h"
 
 #define STRING_(n) #n
@@ -34,7 +35,11 @@ struct dso_entry {
 	} *dups;
 };
 
+static struct jfnode *nodes = NULL;
+static struct jfnode **jflist = &nodes;
+static char *signatures;
 static struct htab dsos_htab, gccsym_htab;
+static int run1ready = 0;
 static int run2ready = 0;
 
 static struct dso_entry **dsos_htab_lookup(const char *linkid)
@@ -207,6 +212,37 @@ static void printgccsym(FILE *f, struct gccsym* gccsym)
 	}
 }
 
+static void prepare_run1(struct jfnode **list, const char *basename)
+{
+	if (run1ready)
+		return;
+
+	FILE *fbase = fopen(basename, "r");
+	struct jfnode *dlbase = read_base(fbase);
+	fclose(fbase);
+
+	struct jfnode *closure = find_closure(dlbase, *list);
+
+	int n = 0;
+	for (struct jfnode *i = closure; i; i = i->next)
+		++n;
+
+	size_t size;
+	FILE *out = open_memstream(&signatures, &size);
+	fprintf(out, "%d\n", n);
+	print_jflist(out, closure);
+	fprintf(out, "%c", '\0');
+	fclose(out);
+
+	FILE *dump = fopen("dlsym-signs.txt", "w");
+	fprintf(dump, "%s", signatures);
+	fclose(dump);
+
+	free_jflist(list);
+	free_jflist(&closure);
+	run1ready = 1;
+}
+
 static void prepare_run2(char **forces, int nforce)
 {
 	if (run2ready)
@@ -296,6 +332,8 @@ static void writefile(FILE *f, const char *name)
 
 static const struct option opts[] = {
 	{ .name = "port", .has_arg = 1, .val = 'p' },
+	{ .name = "dlsym-base", .has_arg = 1, .val = 'b' },
+	{ .name = "jfunc-files", .has_arg = 0, .val = 'j' },
 	{ .name = "deps-files", .has_arg = 0, .val = 'd' },
 	{ .name = "dlsym-files", .has_arg = 0, .val = 'l' },
 	{ .name = "force-files", .has_arg = 0, .val = 'f' },
@@ -310,7 +348,9 @@ static void usage(const char *name)
 int main(int argc, char *argv[])
 {
 	const char *port = STRING(DEFAULT_PORT);
+	const char *dlsym_base = NULL;
 	int v;
+	int jfunc_start_idx, njfunc = 0;
 	int deps_start_idx, ndeps = 0;
 	int dlsym_start_idx, ndlsym = 0;
 	int force_start_idx, nforce = 0;
@@ -318,6 +358,14 @@ int main(int argc, char *argv[])
 		switch (v) {
 		case 'p':
 			port = optarg;
+			break;
+		case 'b':
+			dlsym_base = optarg;
+			break;
+		case 'j':
+			jfunc_start_idx = optind;
+			while (optind < argc && argv[optind][0] != '-')
+				++optind, ++njfunc;
 			break;
 		case 'd':
 			deps_start_idx = optind;
@@ -381,6 +429,19 @@ int main(int argc, char *argv[])
 		prepare_run2(argv + force_start_idx, nforce);
 		fprintf(stderr, "Finished merging\n");
 	}
+	if (njfunc > 0) {
+		fprintf(stderr, "Reading jfunc files %d\n", njfunc);
+		for (int i = jfunc_start_idx; i < jfunc_start_idx + njfunc; ++i) {
+			FILE *f = fopen(argv[i], "r");
+			if (!f)
+				fprintf(stderr, "jfunc file %s reading error\n", argv[i]);
+			read_jf(f, jflist);
+			fclose(f);
+		}
+		fprintf(stderr, "Started transitive closure search\n");
+		prepare_run1(jflist, dlsym_base);
+		fprintf(stderr, "Finished transitive closure search\n");
+	}
 
 	setlinebuf(stdout);
 
@@ -388,7 +449,7 @@ int main(int argc, char *argv[])
 #pragma omp parallel
 #pragma omp master
 	while ((peerfd = accept(sockfd, 0, 0)) >= 0)
-#pragma omp task firstprivate(peerfd) shared(fileno)
+#pragma omp task firstprivate(peerfd) shared(fileno, run1ready, run2ready, jflist)
 	{
 		int cmdlen;
 		char *cmdline = 0;
@@ -426,8 +487,19 @@ int main(int argc, char *argv[])
 		    free(content);
 		    break;
 		  case 'P': /* PreCompiler */
+		    content = readfile (fin, &contentsize);
+
+		    fcont = fmemopen(content, contentsize, "r");
 		    snprintf(namebuf, sizeof namebuf, "jfunc-%03d", fn);
-		    writefile (fin, namebuf);
+		    writefile (fcont, namebuf);
+		    fclose(fcont);
+
+		    fcont = fmemopen(content, contentsize, "r");
+		    #pragma omp critical(jfunc)
+		    read_jf(fcont, jflist);
+		    fclose(fcont);
+
+		    free(content);
 		    break;
 		  case 'C': /* Compiler */
 		    content = readfile (fin, &contentsize);
