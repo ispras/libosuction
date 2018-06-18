@@ -386,7 +386,7 @@ int main(int argc, char *argv[])
 			usage(argv[0]);
 			return 1;
 		}
-	if (!port || optind < argc) {
+	if (!port || optind < argc || !(dlsym_base || ndeps + ndlsym > 0)) {
 		usage(argv[0]);
 		return 1;
 	}
@@ -469,6 +469,7 @@ int main(int argc, char *argv[])
 		FILE *fcont;
 		char *content;
 		size_t contentsize;
+		int n;
 		switch (tool)
 		  {
 		  case 'L': /* Linker */
@@ -502,7 +503,26 @@ int main(int argc, char *argv[])
 		    free(content);
 		    break;
 		  case 'C': /* Compiler */
-		    content = readfile (fin, &contentsize);
+		    #pragma omp critical(jfunc)
+		    prepare_run1(jflist, dlsym_base);
+
+		    fcont = open_memstream (&content, &contentsize);
+		    fout = fdopen(dup(peerfd), "w");
+
+		    fprintf(fout, "%s", signatures);
+		    fflush(fout);
+		    while (fscanf(fin, "%d:", &n) == 1) {
+			    char c;
+			    for (int i = 0; i < n; ++i) {
+				    while ((c = getc(fin)) != '\n')
+					    putc(c, fcont);
+				    putc(c, fcont);
+			    }
+			    fprintf(fout, "%s", signatures);
+			    fflush(fout);
+		    }
+		    fclose(fcont);
+		    fclose(fout);
 
 		    fcont = fmemopen(content, contentsize, "r");
 		    snprintf(namebuf, sizeof namebuf, "dlsym-%03d", fn);

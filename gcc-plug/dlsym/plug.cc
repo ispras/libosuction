@@ -149,10 +149,11 @@ plugin_finalize (void *, void *)
       if (sym_out_fd)
 	{
 	  int fd = atoi (sym_out_fd);
-	  FILE *output = fdopen (fd, "w");
+	  FILE *output = fdopen (dup(fd), "w");
 	  if (!output)
 	    fatal_error ("cannot open fd %d: %s", fd, xstrerror (errno));
 
+	  fprintf(output, "%d:", resolve_contexts.length());
 	  write_dynamic_symbol_calls (output, &resolve_contexts);
 
 	  fclose (output);
@@ -201,16 +202,24 @@ parse_argument (plugin_argument *arg)
     {
       unsigned spos;
       const char *wname;
-      FILE *input = fopen (arg_value, "r");
+      int fd, nsign;
+      if (sscanf(arg_value, "%d", &fd) != 1)
+	fatal_error ("illegal value of argument 'in' : %s\n", arg_value);
 
+      FILE *input = fdopen (dup(fd), "r");
       if (!input)
-	fatal_error ("cannot open %s: %s", arg_value, xstrerror (errno));
+	fatal_error ("cannot open input descriptor %s: %s", arg_value, xstrerror (errno));
 
-      while (fscanf (input, "%ms %d", &wname, &spos) != EOF)
-	{
-	  struct signature sign = { wname, spos };
-	  signatures.safe_push (sign);
-	}
+      if (fscanf(input, "%d", &nsign) != 1)
+	fatal_error ("error reading number of wrappers");
+
+      for (int i = 0; i < nsign; ++i) {
+	if (fscanf (input, "%ms %d", &wname, &spos) != 2)
+	  fatal_error ("error reading wrapper");
+
+	struct signature sign = { wname, spos };
+	signatures.safe_push (sign);
+      }
 
       fclose (input);
       return;

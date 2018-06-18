@@ -62,9 +62,11 @@ int main(int argc, char *argv[])
 	newargv[newargc++] = "-fplugin-arg-" LIBDLSYM "-run=0";
 	newargv[newargc++] = optstr;
 #elif GCC_RUN == 1
+	char jfoptstr[64];
 	snprintf(optstr, sizeof optstr, "-fplugin-arg-" LIBDLSYM "-symout=%d", sockfd);
+	snprintf(jfoptstr, sizeof jfoptstr, "-fplugin-arg-" LIBDLSYM "-in=%d", sockfd);
 	newargv[newargc++] = "-fplugin=" DLSYMPLUG;
-	newargv[newargc++] = "-fplugin-arg-" LIBDLSYM "-in=" DLSYMIN;
+	newargv[newargc++] = jfoptstr;
 	newargv[newargc++] = optstr;
 	newargv[newargc++] = "-fplugin=" MKPRIVPLUG;
 	newargv[newargc++] = "-fplugin-arg-" LIBMKPRIV "-run=1";
