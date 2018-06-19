@@ -85,12 +85,13 @@ class pass_hide_globally_invisible : public simple_ipa_opt_pass
 public:
   pass_hide_globally_invisible (gcc::context *ctxt)
     : simple_ipa_opt_pass (pass_data_hide_globally_invisible, ctxt),
-    fd (-1)
+    fname (NULL), sockfd (-1)
   {}
 
   virtual unsigned int execute (_EXECUTE_ARGS);
 
-  void set_fd (const int fd_) { fd = fd_; }
+  void set_fname (const char *fname_) { fname = fname_; }
+  void set_sockfd (const int sockfd_) { sockfd = sockfd_; }
 
 private:
   bool eliminate_p (symtab_node *node);
@@ -100,7 +101,8 @@ private:
   bool localize_comdat (symtab_node *node);
   void do_localize_node (symtab_node *node);
 
-  int fd; /* File descriptor to read visibility modifications info from.  */
+  const char *fname; /* File to read visibility modifications info from.  */
+  int sockfd; /* Socket descriptor to interact with daemon.  */
   splay_tree elim_nodes;
   splay_tree loc_nodes;
   splay_tree hid_nodes;
@@ -137,17 +139,19 @@ void
 read_decl_names (FILE *f, int num_nodes, splay_tree nodes)
 {
   char *symname;
+  char srcid[32 + 1];
   int i;
   char c1 = 0, c2 = 0;
 
   for (i = 0; i < num_nodes; i++)
     {
-      if ((fscanf (f, "%*[\n \t]%*[^:]%c%*32[^:]%c%ms",
-                   &c1, &c2, &symname) != 3)
+      if ((fscanf (f, "%*[\n \t]%*[^:]%c%32[^:]%c%ms",
+                   &c1, &srcid, &c2, &symname) != 4)
           || c1 != ':' || c2 != ':')
         fatal_error ("error reading elim/loc/hid symbol names");
 
-      splay_tree_insert (nodes, (splay_tree_key) symname, 0);
+      if (!strncmp (md5str, srcid, 32))
+	splay_tree_insert (nodes, (splay_tree_key) symname, 0);
     }
 }
 
@@ -157,14 +161,24 @@ pass_hide_globally_invisible::read_vis_changes (void)
   FILE *fin, *fout;
   int nelim, nloc, nhid;
 
-  if (!(fout = fdopen(fd, "w"))
-      || fprintf(fout, "%.32s", md5str) < 0
-      || fflush(fout) != 0)
-    fatal_error ("cannot open fd %d to write: %s", fd, xstrerror (errno));
+  if (sockfd >= 0) {
+    if (!(fout = fdopen(sockfd, "w"))
+	|| fprintf(fout, "%.32s", md5str) < 0
+	|| fflush(fout) != 0)
+      fatal_error ("cannot open sockfd %d to write: %s", sockfd, xstrerror (errno));
 
-  fin = fdopen(dup(fd), "r");
-  if (!fin)
-    fatal_error ("cannot open fd %d to read: %s", fd, xstrerror (errno));
+    fin = fdopen(dup(sockfd), "r");
+    if (!fin)
+      fatal_error ("cannot open sockfd %d to read: %s", sockfd, xstrerror (errno));
+
+    fclose (fout);
+  } else if (fname) {
+    fin = fopen (fname, "r");
+    if (!fin)
+      fatal_error ("cannot open %s", fname);
+  } else {
+      fatal_error ("no input file");
+  }
 
   fscanf (fin, "%d %d %d", &nelim, &nloc, &nhid);
 
@@ -180,7 +194,6 @@ pass_hide_globally_invisible::read_vis_changes (void)
     }
 
   fclose (fin);
-  fclose (fout);
 }
 
 void
@@ -308,10 +321,12 @@ pass_hide_globally_invisible::execute (_EXECUTE_ARGS)
 }
 
 simple_ipa_opt_pass *
-make_pass_hide_globally_invisible (gcc::context *ctxt, const int fd)
+make_pass_hide_globally_invisible (gcc::context *ctxt, const char *filename,
+				   const int sockfd)
 {
   pass_hide_globally_invisible *pass = new pass_hide_globally_invisible (ctxt);
-  pass->set_fd (fd);
+  pass->set_fname (filename);
+  pass->set_sockfd (sockfd);
   return pass;
 }
 
@@ -395,7 +410,8 @@ plugin_init (plugin_name_args *i, plugin_gcc_version *v)
 {
   plugin_argument *arg;
   struct register_pass_info pass_info;
-  int fd = -1;
+  char *fname = NULL;
+  int sockfd = -1;
   long gcc_run = 0;
 
   gcc_version.configuration_arguments = v->configuration_arguments;
@@ -413,8 +429,10 @@ plugin_init (plugin_name_args *i, plugin_gcc_version *v)
     fatal_error ("the plugin does not make provision for -fleading-underscore");
 
   for (arg = i->argv; arg < i->argv + i->argc; arg++)
-    if (!strcmp (arg->key, "fd"))
-      sscanf (arg->value, "%d", &fd);
+    if (!strcmp (arg->key, "fname"))
+      fname = arg->value;
+    else if (!strcmp (arg->key, "sockfd"))
+      sscanf (arg->value, "%d", &sockfd);
     else if (!strcmp (arg->key, "run"))
       {
         errno = 0;
@@ -424,14 +442,17 @@ plugin_init (plugin_name_args *i, plugin_gcc_version *v)
       }
     else
       fatal_error ("unknown plugin option '%s'", arg->key);
-  if (gcc_run == 2 && fd < 0)
-    fatal_error ("file descriptor with visibility modifications not specified "
-		 "(pass 'fd' argument to the plugin)");
+  if (gcc_run == 2 && sockfd < 0 && !fname)
+    fatal_error ("visibility modifications not specified "
+		 "(pass 'sockfd' or 'fname' arguments to the plugin)");
+  if (sockfd >= 0 && fname)
+    fatal_error ("'sockfd' and 'fname' are not compatible "
+		 "(pass only one of them)");
   if (!(gcc_run == 1 || gcc_run == 2))
   bad_gcc_run:
     fatal_error ("pass run = 1 or 2 to the plugin");
 
-  pass_info.pass = make_pass_hide_globally_invisible (g, fd);
+  pass_info.pass = make_pass_hide_globally_invisible (g, fname, sockfd);
   pass_info.reference_pass_name = "visibility";
   pass_info.ref_pass_instance_number = 1;
   pass_info.pos_op = PASS_POS_INSERT_BEFORE;

@@ -73,7 +73,7 @@ int main(int argc, char *argv[])
 #else
 	newargv[newargc++] = "-fplugin=" MKPRIVPLUG;
 	if (access(IGNORE_PLUG_OPT, F_OK)) {
-		snprintf(optstr, sizeof optstr, "-fplugin-arg-" LIBMKPRIV "-fd=%d", sockfd);
+		snprintf(optstr, sizeof optstr, "-fplugin-arg-" LIBMKPRIV "-sockfd=%d", sockfd);
 		newargv[newargc++] = "-fplugin-arg-" LIBMKPRIV "-run=2";
 		newargv[newargc++] = optstr;
 	} else {
