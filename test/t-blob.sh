@@ -7,7 +7,7 @@ $CC -shared libpriv1.o libpriv2.o -o libtpriv.so || exit 3
 $CC -c main.c -o main.o  || exit 4
 $CC main.o -L. -ltpriv -o exe1 || exit 5
 
-$CXX -fno-rtti -g -O0 -c main2.cc -o main2.o  || exit 7
+$CXX -std=c++11 -fno-rtti -g -O0 -c main2.cc -o main2.o  || exit 7
 $CXX main2.o -L. -ltpriv -o exe2 || exit 8
 
 $CC -c -fPIC [123].c || exit 9
