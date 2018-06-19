@@ -163,6 +163,28 @@ plugin_finalize (void *, void *)
 }
 
 void static
+read_signatures (FILE *f)
+{
+  unsigned spos;
+  const char *wname;
+  int nsign;
+
+  if (!f)
+    fatal_error ("cannot open file with signatures: %s", xstrerror (errno));
+
+  if (fscanf(f, "%d", &nsign) != 1)
+    fatal_error ("error reading number of wrappers");
+
+  for (int i = 0; i < nsign; ++i) {
+    if (fscanf (f, "%ms %d", &wname, &spos) != 2)
+      fatal_error ("error reading wrapper");
+
+    struct signature sign = { wname, spos };
+    signatures.safe_push (sign);
+  }
+}
+
+void static
 parse_argument (plugin_argument *arg)
 {
   const char *arg_key = arg->key;
@@ -195,35 +217,30 @@ parse_argument (plugin_argument *arg)
     }
 
   /* Read the signatures from an input file:
-     -fplugin-libplug-in=signs.txt
+     -fplugin-libplug-signs-fd=13
+     -fplugin-libplug-signs=signs.txt
      in format:
+     <number of signatures>
      <signature name> <symbol position> */
-  if (!strcmp(arg_key, "in"))
+  if (!strcmp(arg_key, "signs-fd"))
     {
-      unsigned spos;
-      const char *wname;
-      int fd, nsign;
+      int fd;
       if (sscanf(arg_value, "%d", &fd) != 1)
 	fatal_error ("illegal value of argument 'in' : %s\n", arg_value);
 
       FILE *input = fdopen (dup(fd), "r");
-      if (!input)
-	fatal_error ("cannot open input descriptor %s: %s", arg_value, xstrerror (errno));
-
-      if (fscanf(input, "%d", &nsign) != 1)
-	fatal_error ("error reading number of wrappers");
-
-      for (int i = 0; i < nsign; ++i) {
-	if (fscanf (input, "%ms %d", &wname, &spos) != 2)
-	  fatal_error ("error reading wrapper");
-
-	struct signature sign = { wname, spos };
-	signatures.safe_push (sign);
-      }
-
+      read_signatures (input);
       fclose (input);
       return;
     }
+  if (!strcmp(arg_key, "signs"))
+    {
+      FILE *input = fopen (arg_value, "r");
+      read_signatures (input);
+      fclose (input);
+      return;
+    }
+
 
   /* Read the mode of plugin:
      -fplugin-libplug-run={0,1}

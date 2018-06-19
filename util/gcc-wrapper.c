@@ -64,7 +64,7 @@ int main(int argc, char *argv[])
 #elif GCC_RUN == 1
 	char jfoptstr[64];
 	snprintf(optstr, sizeof optstr, "-fplugin-arg-" LIBDLSYM "-symout=%d", sockfd);
-	snprintf(jfoptstr, sizeof jfoptstr, "-fplugin-arg-" LIBDLSYM "-in=%d", sockfd);
+	snprintf(jfoptstr, sizeof jfoptstr, "-fplugin-arg-" LIBDLSYM "-signs-fd=%d", sockfd);
 	newargv[newargc++] = "-fplugin=" DLSYMPLUG;
 	newargv[newargc++] = jfoptstr;
 	newargv[newargc++] = optstr;
