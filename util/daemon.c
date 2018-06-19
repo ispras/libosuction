@@ -20,8 +20,11 @@
 #define STRING_(n) #n
 #define STRING(n) STRING_(n)
 
+enum visibility { ELIMINABLE, LOCAL, HIDDEN };
+
 struct gccsym {
 	int cnt;
+	enum visibility vis;
 	struct sym *sym;
 	struct gccsym *next;
 };
@@ -35,6 +38,7 @@ struct dso_entry {
 	} *dups;
 };
 
+static int hidden_only = 0;
 static struct jfnode *nodes = NULL;
 static struct jfnode **jflist = &nodes;
 static char *signatures;
@@ -134,13 +138,17 @@ static struct gccsym *gccsym_htab_lookup_only(const char *srcid)
 	}
 }
 
-static void add_gccsym(struct sym *sym)
+static void add_gccsym(struct sym *sym, enum visibility vis)
 {
 	struct gccsym **gccsymp = gccsym_htab_lookup(sym);
 	struct gccsym **prev = gccsymp, *curr = *gccsymp;
+	if (hidden_only)
+		vis = HIDDEN;
 	while (curr) {
 		if (!strcmp(curr->sym->name, sym->name)) {
 			curr->cnt++;
+			if (curr->vis < vis)
+				curr->vis = vis;
 			return;
 		}
 		prev = &curr->next;
@@ -148,6 +156,7 @@ static void add_gccsym(struct sym *sym)
 	}
 	struct gccsym *gccsym = calloc(1, sizeof *gccsym);
 	gccsym->sym = sym;
+	gccsym->vis = vis;
 	gccsym->cnt = 1;
 	*prev = gccsym;
 	gccsym_htab.used++;
@@ -183,11 +192,11 @@ static void amend_output(struct dso *dso)
 		return;
 
 	for (struct sym *y = mark->elims; y; y = (void*)y->n.stacknext)
-		add_gccsym(y);
+		add_gccsym(y, ELIMINABLE);
 	for (struct sym *y = mark->locs; y; y = (void*)y->n.stacknext)
-		add_gccsym(y);
+		add_gccsym(y, LOCAL);
 	for (struct sym *y = mark->hids; y; y = (void*)y->n.stacknext)
-		add_gccsym(y);
+		add_gccsym(y, HIDDEN);
 }
 
 static void printgccsym(FILE *f, struct gccsym* gccsym)
@@ -199,17 +208,53 @@ static void printgccsym(FILE *f, struct gccsym* gccsym)
 	struct obj *obj = ((struct scn *)gccsym->sym->defscn)->objptr;
 	const char *t, *objname = obj->path;
 	if ((t = strrchr(objname, '/'))) objname = t+1;
-
-	int n = 0;
+	/* Count total symbols */
+	int nelim = 0, nloc = 0, nhid = 0;
 	struct gccsym* iter = gccsym;
-	while(iter) n++, iter = iter->next;
-
-
-	fprintf(f, "%d %d %d\n\n\n", 0, 0, n);
-	while(gccsym) {
-		fprintf(f, "%s:%s:%s\n", objname, obj->srcid, gccsym->sym->name);
-		gccsym = gccsym->next;
+	while(iter) {
+		switch (iter->vis) {
+			case ELIMINABLE:
+				++nelim;
+				break;
+			case LOCAL:
+				++nloc;
+				break;
+			case HIDDEN:
+				++nhid;
+				break;
+		}
+		iter = iter->next;
 	}
+	/* Order symbols for output */
+	struct gccsym *order[nelim + nloc + nhid];
+	int i = 0;
+	int j = nelim;
+	int k = nelim + nloc;
+	iter = gccsym;
+	while (iter) {
+		switch (iter->vis) {
+			case ELIMINABLE:
+				order[i++] = iter;
+				break;
+			case LOCAL:
+				order[j++] = iter;
+				break;
+			case HIDDEN:
+				order[k++] = iter;
+				break;
+		}
+		iter = iter->next;
+	}
+
+	fprintf(f, "%d %d %d\n", nelim, nloc, nhid);
+	for (i = 0; i < nelim; ++i)
+		fprintf(f, "%s:%s:%s\n", objname, obj->srcid, order[i]->sym->name);
+	fprintf(f, "\n");
+	for (; i < nelim + nloc; ++i)
+		fprintf(f, "%s:%s:%s\n", objname, obj->srcid, order[i]->sym->name);
+	fprintf(f, "\n");
+	for (; i < nelim + nloc + nhid; ++i)
+		fprintf(f, "%s:%s:%s\n", objname, obj->srcid, order[i]->sym->name);
 }
 
 static void prepare_run1(struct jfnode **list, const char *basename)
@@ -337,6 +382,7 @@ static const struct option opts[] = {
 	{ .name = "deps-files", .has_arg = 0, .val = 'd' },
 	{ .name = "dlsym-files", .has_arg = 0, .val = 'l' },
 	{ .name = "force-files", .has_arg = 0, .val = 'f' },
+	{ .name = "hidden-only", .has_arg = 0, .val = 'h' },
 	{ 0 }
 };
 
@@ -381,6 +427,9 @@ int main(int argc, char *argv[])
 			force_start_idx = optind;
 			while (optind < argc && argv[optind][0] != '-')
 				++optind, ++nforce;
+			break;
+		case 'h':
+			hidden_only = 1;
 			break;
 		default:
 			usage(argv[0]);
