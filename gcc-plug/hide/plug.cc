@@ -57,7 +57,11 @@ const pass_data pass_data_hide_globally_invisible =
 #define fatal_error(...) fatal_error (UNKNOWN_LOCATION, __VA_ARGS__)
 #define asm_nodes symtab->first_asm_symbol ()
 #define add_asm_node(asm_str) symtab->finalize_toplevel_asm (asm_str)
+#if BUILDING_GCC_VERSION >= 8001
+#define dump_symtab(f) symtab->dump (f)
+#else
 #define dump_symtab(f) symtab_node::dump_table (f)
+#endif
 #define cgraph_function_with_gimple_body_p(node) node->has_gimple_body_p ()
 #define set_comdat_group(node, group) node->set_comdat_group (group)
 #define set_section(node, section) node->set_section (section)

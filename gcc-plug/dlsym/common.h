@@ -48,7 +48,11 @@ static inline struct function *get_fun_cgraph_node (cgraph_node *node)
 
 #if BUILDING_GCC_VERSION >= 5000
 #define varpool_get_node(decl) varpool_node::get(decl)
+#if BUILDING_GCC_VERSION >= 8001
+#define dump_symtab(f) symtab->dump (f)
+#else
 #define dump_symtab(f) symtab_node::dump_table (f)
+#endif
 #define dump_cgraph_node(file, node) (node)->dump(file)
 #define get_fun_cgraph_node(node) (node)->get_fun ()
 #define cgraph_function_with_gimple_body_p(node) node->has_gimple_body_p ()
