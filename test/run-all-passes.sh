@@ -103,8 +103,8 @@ gcc_real=$gcc$suffix
 gxx_real=$gxx$suffix
 
 if [ ! -e "$gcc_real" ]; then
-  cp $gcc $gcc_real
-  cp $gxx $gxx_real
+  cp $gcc $gcc_real || die "cannot cp $gcc to $gcc_real"
+  cp $gxx $gxx_real || die "cannot cp $gxx to $gxx_real"
 else
   dont_rm_real=1
   die "$gcc_real already exists."
