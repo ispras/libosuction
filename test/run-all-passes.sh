@@ -112,6 +112,9 @@ fi
 
 test -z "$real_ld" && real_ld=$plugdir/ld/ld
 test -e "$real_ld" || real_ld=$(which ld)
+if [ ! -e "$plugdir/ld/ld" ]; then
+    cp $real_ld $plugdir/ld/ld || die "cannot cp $real_ld $plugdir/ld/ld"
+fi
 
 tmpdir=$(mktemp -d "$plugdir/temps.XXX")
 lddir="$tmpdir"
