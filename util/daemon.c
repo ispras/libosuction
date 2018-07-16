@@ -388,7 +388,30 @@ static const struct option opts[] = {
 
 static void usage(const char *name)
 {
-	fprintf(stderr, "usage: %s [--port n]\n", name);
+	fprintf(stderr,
+		"Usage: %s [options]\n"
+		"Options:\n"
+		"  --port N"
+		"\t\toptional, the port daemon starts on and listens\n"
+		"  --dlsym-base file"
+		"\trequired for Run-0, a file that contains information\n"
+		"\t\t\tabout base dlsym signatures\n"
+		"  --jfunc-files files"
+		"\trequired for Run-1, a sequence of files with jump\n"
+		"\t\t\tfunctions that were dumped at Run-0 by daemon\n"
+		"  --deps-files files"
+		"\trequired for Run-2, a sequence of files with symbol\n"
+		"\t\t\tdependencies that were dumped at Run-1 by daemon\n"
+		"  --dlsym-files files"
+		"\trequired for Run-2, a sequence of files with symbol\n"
+		"\t\t\tlinked through dlsym-like functions that were dumped\n"
+		"\t\t\tat Run-1 by daemon\n"
+		"  --force-files files"
+		"\toptional, a set of symbols that should not be\n"
+		"\t\t\teliminated\n"
+		"  --hidden-only"
+		"\t\toptional, permit a GCC plugin to delete function\n"
+		"\t\t\tduring compilation\n", name);
 }
 
 int main(int argc, char *argv[])
