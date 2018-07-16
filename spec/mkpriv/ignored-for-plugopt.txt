@@ -1,0 +1,5 @@
+boost
+iotivity
+nss
+glibc
+

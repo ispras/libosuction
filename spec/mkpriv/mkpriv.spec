@@ -32,9 +32,13 @@ ExclusiveArch:  x86_64 %{ix86}
 %define our_path /emul
 
 # paths
-%define PLUGDIR /usr/lib/mkpriv
-%define AUXDIR	/var/lib/mkpriv
-%define WRAPDIR	/usr/bin
+%define plugdir /usr/lib/mkpriv
+%define auxdir	/var/lib/mkpriv
+%define wrapdir	/usr/bin
+
+%define daemon_host 172.16.52.7:33351
+%define daemon_hostdir /etc
+%define daemon_hostfile %{daemon_hostdir}/mkprivd
 
 %description
 Provide a collection of wrappers for dependency analysis used in binary optimization project.
@@ -66,8 +70,8 @@ global call graph analysis.
 %build
 cross_gcc_version=`%{cross_gcc} --version | sed -ne '1s/%{cross_gcc}[^0-9]*\(\([0-9]\.\?\)*\).*/\1/p'`
 
-./configure --release --elfclass=32 CC=gcc CXX=g++ --plugdir=%{PLUGDIR} --auxdir=%{AUXDIR} \
-	CPPFLAGS="-I%{cross_libdir}/gcc/%{cross_arch}/${cross_gcc_version}/plugin/include"
+./configure --release --elfclass=32 CC=gcc CXX=g++ --plugdir=%{plugdir} --auxdir=%{auxdir} \
+	    CPPFLAGS="-I%{cross_libdir}/gcc/%{cross_arch}/${cross_gcc_version}/plugin/include"
 make -B
 # Cross-compile binaries for target
 make -B util/srcid.o CC=%{cross_gcc} CFLAGS="--param=ssp-buffer-size=4 -march=armv7-a -mtune=cortex-a8 -mlittle-endian -mfpu=neon -mfloat-abi=softfp -mthumb -Wp,-D__SOFTFP__ -Wl,-O1 -Wl,--hash-style=gnu -Wa,-mimplicit-it=thumb"
@@ -76,16 +80,18 @@ make -B util/dummy.o CC=%{cross_gcc} CFLAGS="--param=ssp-buffer-size=4 -march=ar
 
 %install
 cross_gcc_version=`%{cross_gcc} --version | sed -ne '1s/%{cross_gcc}[^0-9]*\(\([0-9]\.\?\)*\).*/\1/p'`
-mkdir -p %{buildroot}%{PLUGDIR}/ld
-install -m 755 %{_builddir}/%{name}-%{version}/gcc-plug/dlsym/*.so %{buildroot}%{PLUGDIR}
-install -m 755 %{_builddir}/%{name}-%{version}/gcc-plug/hide/*.so %{buildroot}%{PLUGDIR}
-install -m 755 %{_builddir}/%{name}-%{version}/ld-plug/*.so %{buildroot}%{PLUGDIR}/ld
-install -m 755 %{_builddir}/%{name}-%{version}/util/srcid.o %{buildroot}%{PLUGDIR}/ld
-install -m 755 %{_builddir}/%{name}-%{version}/util/dummy.o %{buildroot}%{PLUGDIR}/ld
+mkdir -p %{buildroot}%{plugdir}/ld
+mkdir -p %{buildroot}%{auxdir}
+install -m 755 %{_builddir}/%{name}-%{version}/gcc-plug/dlsym/*.so %{buildroot}%{plugdir}
+install -m 755 %{_builddir}/%{name}-%{version}/gcc-plug/hide/*.so %{buildroot}%{plugdir}
+install -m 755 %{_builddir}/%{name}-%{version}/ld-plug/*.so %{buildroot}%{plugdir}/ld
+install -m 755 %{_builddir}/%{name}-%{version}/util/srcid.o %{buildroot}%{plugdir}/ld
+install -m 755 %{_builddir}/%{name}-%{version}/util/dummy.o %{buildroot}%{plugdir}/ld
+install -m 644 %{_sourcedir}/ignored-for-plugopt.txt %{buildroot}%{auxdir}
 
-mkdir -p %{buildroot}%{WRAPDIR}
+mkdir -p %{buildroot}%{wrapdir}
 for tool in gcc-wrapper-{0,1,2} wrapper-{1,2}; do
-	install -m 755 %{_builddir}/%{name}-%{version}/util/$tool %{buildroot}%{WRAPDIR}
+  install -m 755 %{_builddir}/%{name}-%{version}/util/$tool %{buildroot}%{wrapdir}
 done
 
 %ifarch %ix86
@@ -96,10 +102,10 @@ done
 %endif
 
 for binary in \
-	%{buildroot}%{PLUGDIR}/*.so \
-	%{buildroot}%{PLUGDIR}/ld/*.so \
-    %{buildroot}%{WRAPDIR}/gcc-wrapper-{0,1,2} \
-    %{buildroot}%{WRAPDIR}/wrapper-{1,2}
+  %{buildroot}%{plugdir}/*.so \
+  %{buildroot}%{plugdir}/ld/*.so \
+  %{buildroot}%{wrapdir}/gcc-wrapper-{0,1,2} \
+  %{buildroot}%{wrapdir}/wrapper-{1,2}
 do
   patchelf --set-rpath "%{our_path}/%{_libdir}" $binary
 # not all binaries have an .interp section
@@ -108,6 +114,9 @@ do
   fi
 done
 
+# add etc files for wrappers to connect to daemon (required for run0 and run1)
+mkdir %{buildroot}%{daemon_hostdir}
+echo %{daemon_host} > %{buildroot}%{daemon_hostfile}
 # update baselibs.conf
 sed -i -e "s,#TARGET_ARCH#,%{cross_arch}," %{_sourcedir}/baselibs.conf
 sed -i -e "s,#GCC_VERSION#,${cross_gcc_version}," %{_sourcedir}/baselibs.conf
@@ -117,23 +126,35 @@ sed -i -e "s,#GCC_VERSION#,${cross_gcc_version}," %{_sourcedir}/baselibs.conf
 %ifarch x86_64
   sed -i -e "s,#QA_VERSION#,x86_64-armv7l," %{_sourcedir}/baselibs.conf
 %endif
-sed -i -e "s,#PLUGDIR#,%{PLUGDIR}," %{_sourcedir}/baselibs.conf
-sed -i -e "s,#WRAPDIR#,%{WRAPDIR}," %{_sourcedir}/baselibs.conf
+sed -i -e "s,#PLUGDIR#,%{plugdir}," %{_sourcedir}/baselibs.conf
+sed -i -e "s,#WRAPDIR#,%{wrapdir}," %{_sourcedir}/baselibs.conf
+sed -i -e "s,#AUXDIR#,%{auxdir}," %{_sourcedir}/baselibs.conf
+
+## Set gold linker
+%if "%_repository" == "tizen-iot-4.0-gold"
+sed -i -e "s,#USE_GOLD#,true," %{_sourcedir}/baselibs.conf
+%endif
+%if "%_repository" != "tizen-iot-4.0-gold"
+sed -i -e "s,#USE_GOLD#,false," %{_sourcedir}/baselibs.conf
+%endif
 
 # At this moment there is no difference in the packages due to comfortable
 # developing process. We do not delete unused files from packages.
 
 %files run0
-%{PLUGDIR}/*
-%{WRAPDIR}/*
+%{plugdir}/*
+%{wrapdir}/*
+%{daemon_hostfile}
 
 %files run1
-%{PLUGDIR}/*
-%{WRAPDIR}/*
+%{plugdir}/*
+%{wrapdir}/*
+%{daemon_hostfile}
 
 %files run2
-%{PLUGDIR}/*
-%{WRAPDIR}/*
+%{plugdir}/*
+%{wrapdir}/*
+%{auxdir}/ignored-for-plugopt.txt
+%{daemon_hostfile}
 
 %changelog
-
