@@ -1,3 +1,9 @@
+# Ignore filenames with no dot (those are the executables) under util/
+util/*
+!util/**/
+!util/*.*
+util/srcid.o
+
 confdef.h
 config.mak
 test/*.o
