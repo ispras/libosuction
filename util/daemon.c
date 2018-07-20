@@ -38,7 +38,7 @@ struct dso_entry {
 	} *dups;
 };
 
-static int hidden_only = 0;
+static int hidden_only = 1;
 static struct jfnode *nodes = NULL;
 static struct jfnode **jflist = &nodes;
 static char *signatures;
@@ -382,7 +382,7 @@ static const struct option opts[] = {
 	{ .name = "deps-files", .has_arg = 0, .val = 'd' },
 	{ .name = "dlsym-files", .has_arg = 0, .val = 'l' },
 	{ .name = "force-files", .has_arg = 0, .val = 'f' },
-	{ .name = "hidden-only", .has_arg = 0, .val = 'h' },
+	{ .name = "gcc-elim", .has_arg = 0, .val = 'e' },
 	{ 0 }
 };
 
@@ -408,10 +408,7 @@ static void usage(const char *name)
 		"\t\t\tat Run-1 by daemon\n"
 		"  --force-files files"
 		"\toptional, a set of symbols that should not be\n"
-		"\t\t\teliminated\n"
-		"  --hidden-only"
-		"\t\toptional, permit a GCC plugin to delete function\n"
-		"\t\t\tduring compilation\n", name);
+		"\t\t\teliminated\n", name);
 }
 
 int main(int argc, char *argv[])
@@ -451,8 +448,8 @@ int main(int argc, char *argv[])
 			while (optind < argc && argv[optind][0] != '-')
 				++optind, ++nforce;
 			break;
-		case 'h':
-			hidden_only = 1;
+		case 'e':
+			hidden_only = 0;
 			break;
 		default:
 			usage(argv[0]);
