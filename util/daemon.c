@@ -279,7 +279,7 @@ static void prepare_run1(struct jfnode **list, const char *basename)
 	fprintf(out, "%c", '\0');
 	fclose(out);
 
-	FILE *dump = fopen("dlsym-signs.txt", "w");
+	FILE *dump = fopen("signatures.txt", "w");
 	fprintf(dump, "%s", signatures);
 	fclose(dump);
 
