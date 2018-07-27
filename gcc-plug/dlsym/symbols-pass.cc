@@ -458,7 +458,7 @@ parse_default_def (struct resolve_ctx *ctx, tree default_def)
       if (dump_file)
 	{
 	  fprintf (dump_file, "\tTrack %s symbol obtained from:\n\t\t", subsymname);
-	  print_gimple_stmt (dump_file, cs->call_stmt, 0, 0);
+	  print_gimple_stmt (dump_file, cs->call_stmt, 0, TDF_NONE);
 	}
       push_call_info (ctx, cs->caller, cs->call_stmt, &subsign);
 
