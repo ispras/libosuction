@@ -3,7 +3,7 @@ Version:        1
 Release:        1
 Summary:        Collection of wrappers for dependency analysis
 
-License:        GPL-3.0+
+License:        GPL-2.0
 Url:            http://ispras.ru
 Group:          Development/Building
 Source0:        %{name}.tar.gz

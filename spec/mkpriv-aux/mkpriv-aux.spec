@@ -2,7 +2,7 @@ Name:           mkpriv-aux
 Version:        1
 Release:        1
 Summary:        Auxiliary files for mkpriv1
-License:        GPL-3.0+
+License:        GPL-2.0
 Url:            http://ispras.ru
 Group:          Development/Building
 Source:         mkpriv-aux.tar.gz
