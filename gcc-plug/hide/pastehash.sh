@@ -1,4 +1,6 @@
 #!/bin/bash -
+# SPDX-License-Identifier: GPL-2.0
+# Copyright (C) 2018 ISP RAS (http://ispras.ru/en)
 
 # Take the hashes from .o files and paste into the .vis files (.vis files are
 # created from .vis.def files via substituting proper hashes for the

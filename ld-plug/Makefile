@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-2.0
+# Copyright (C) 2018 ISP RAS (http://ispras.ru/en)
+
 TEST-OBJ =  test1a.o test1b.o
 PLUGIN-DEPS = libplug.so
 

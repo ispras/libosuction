@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0
+// Copyright (C) 2018 ISP RAS (http://ispras.ru/en)
+
 #ifndef GCC_PLUG_COMMON_H
 #define GCC_PLUG_COMMON_H
 

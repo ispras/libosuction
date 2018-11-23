@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: GPL-2.0
+# Copyright (C) 2018 ISP RAS (http://ispras.ru/en)
 PLUGIN_ARG="-fplugin-arg-libplug-sign-dlsym=1 -fplugin-arg-libplug-in=signs.txt -fplugin-arg-libplug-run=0"
 
 COUNTER_PASSED=0

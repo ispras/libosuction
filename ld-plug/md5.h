@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0
+// Copyright (C) 2018 ISP RAS (http://ispras.ru/en)
+
 // Trivial wrappers/helpers for md5 computation routines defined in md5-impl.h
 
 #ifndef MD5_H
