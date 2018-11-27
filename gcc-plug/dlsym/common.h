@@ -55,7 +55,6 @@ static inline struct function *get_fun_cgraph_node (cgraph_node *node)
 #define dump_symtab(f) symtab->dump (f)
 #else
 #define dump_symtab(f) symtab_node::dump_table (f)
-#define TDF_NONE 0
 #endif
 #define dump_cgraph_node(file, node) (node)->dump(file)
 #define get_fun_cgraph_node(node) (node)->get_fun ()
@@ -67,6 +66,10 @@ typedef gimple *gimple_ptr;
 typedef const gimple *const_gimple_ptr;
 #define gimple gimple_ptr
 #define const_gimple const_gimple_ptr
+#endif
+
+#if BUILDING_GCC_VERSION < 8001
+#define TDF_NONE 0
 #endif
 
 /* IPA/LTO related */
